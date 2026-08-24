@@ -2,9 +2,12 @@ package manage
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -12,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mxpv/podsync/pkg/db"
 	"github.com/mxpv/podsync/pkg/feed"
 	"github.com/mxpv/podsync/pkg/model"
 	"github.com/pelletier/go-toml"
@@ -31,20 +35,27 @@ type Feed struct {
 	KeepLast        int    `json:"keep_last"`
 	MinimumDuration int64  `json:"minimum_duration"`
 	UpdatePeriod    string `json:"update_period"`
+	DiskUsage       int64  `json:"disk_usage"`
 }
 
 type Change struct {
-	Feed *feed.Config
+	Feed      *feed.Config
+	DeletedID string
 }
+
+type SourceResolver func(context.Context, string) (string, error)
 
 type Store struct {
 	path     string
+	dataDir  string
+	database db.Storage
+	resolver SourceResolver
 	onChange func(Change)
 	mu       sync.Mutex
 }
 
-func NewStore(path string, onChange func(Change)) *Store {
-	return &Store{path: path, onChange: onChange}
+func NewStore(path, dataDir string, database db.Storage, resolver SourceResolver, onChange func(Change)) *Store {
+	return &Store{path: path, dataDir: dataDir, database: database, resolver: resolver, onChange: onChange}
 }
 
 func (s *Store) List() ([]Feed, error) {
@@ -57,7 +68,13 @@ func (s *Store) List() ([]Feed, error) {
 	}
 	result := make([]Feed, 0, len(configs))
 	for id, config := range configs {
-		result = append(result, toAPI(id, config))
+		item := toAPI(id, config)
+		usage, err := s.diskUsage(id)
+		if err != nil {
+			return nil, err
+		}
+		item.DiskUsage = usage
+		result = append(result, item)
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
 	return result, nil
@@ -77,6 +94,10 @@ func (s *Store) Save(id string, input Feed) (Feed, error) {
 	data, err := os.ReadFile(s.path)
 	if err != nil {
 		return Feed{}, fmt.Errorf("read config: %w", err)
+	}
+	var previous *feed.Config
+	if current, currentErr := managedFeedFromDocument(data, id); currentErr == nil {
+		previous = current
 	}
 	tree, err := toml.LoadBytes(data)
 	if err != nil {
@@ -110,10 +131,138 @@ func (s *Store) Save(id string, input Feed) (Feed, error) {
 	if err := writeConfig(s.path, []byte(merged), data); err != nil {
 		return Feed{}, err
 	}
+	mediaTypeChanged := previous != nil && toAPI(id, previous).MediaType != input.MediaType
+	var cleanupErr error
+	if mediaTypeChanged {
+		cleanupErr = s.deleteFeedData(context.Background(), id)
+	}
 	if s.onChange != nil {
 		s.onChange(Change{Feed: config})
 	}
-	return toAPI(id, config), nil
+	if cleanupErr != nil {
+		return Feed{}, fmt.Errorf("feed format changed but old media cleanup was incomplete: %w", cleanupErr)
+	}
+	result := toAPI(id, config)
+	result.DiskUsage, err = s.diskUsage(id)
+	if err != nil {
+		return Feed{}, err
+	}
+	return result, nil
+}
+
+func (s *Store) Resolve(ctx context.Context, sourceURL string) (string, error) {
+	parsed, err := url.ParseRequestURI(sourceURL)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "", fmt.Errorf("source URL must be an absolute URL")
+	}
+	if s.resolver == nil {
+		return "", fmt.Errorf("source name resolution is unavailable")
+	}
+	title, err := s.resolver(ctx, sourceURL)
+	if err != nil {
+		return "", fmt.Errorf("resolve source name: %w", err)
+	}
+	id := normaliseFeedID(title)
+	if id == "" {
+		return "", fmt.Errorf("source did not provide a usable channel name")
+	}
+	return id, nil
+}
+
+func (s *Store) Delete(ctx context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !feedIDPattern.MatchString(id) {
+		return fmt.Errorf("invalid feed ID")
+	}
+	data, err := os.ReadFile(s.path)
+	if err != nil {
+		return fmt.Errorf("read config: %w", err)
+	}
+	configs, err := s.loadFeeds()
+	if err != nil {
+		return err
+	}
+	if _, ok := configs[id]; !ok {
+		return fmt.Errorf("feed %q was not found", id)
+	}
+	if len(configs) == 1 {
+		return fmt.Errorf("the final feed cannot be deleted because Podsync requires at least one feed")
+	}
+
+	updated, err := removeFeedBlock(string(data), id)
+	if err != nil {
+		return err
+	}
+	if err := writeConfig(s.path, []byte(updated), data); err != nil {
+		return err
+	}
+
+	cleanupErr := s.deleteFeedData(ctx, id)
+	if s.onChange != nil {
+		s.onChange(Change{DeletedID: id})
+	}
+	if cleanupErr != nil {
+		return fmt.Errorf("feed was removed from config but local cleanup was incomplete: %w", cleanupErr)
+	}
+	return nil
+}
+
+func (s *Store) deleteFeedData(ctx context.Context, id string) error {
+	var cleanupErrors []error
+	if s.database != nil {
+		if err := s.database.DeleteFeed(ctx, id); err != nil {
+			cleanupErrors = append(cleanupErrors, fmt.Errorf("delete database records: %w", err))
+		}
+	}
+	if s.dataDir != "" {
+		root, err := filepath.Abs(s.dataDir)
+		if err != nil {
+			cleanupErrors = append(cleanupErrors, fmt.Errorf("resolve data directory: %w", err))
+		} else {
+			if err := os.RemoveAll(filepath.Join(root, id)); err != nil {
+				cleanupErrors = append(cleanupErrors, fmt.Errorf("delete downloaded media: %w", err))
+			}
+			if err := os.Remove(filepath.Join(root, id+".xml")); err != nil && !os.IsNotExist(err) {
+				cleanupErrors = append(cleanupErrors, fmt.Errorf("delete feed XML: %w", err))
+			}
+		}
+	}
+	return errors.Join(cleanupErrors...)
+}
+
+func (s *Store) diskUsage(id string) (int64, error) {
+	if s.dataDir == "" {
+		return 0, nil
+	}
+	root, err := filepath.Abs(s.dataDir)
+	if err != nil {
+		return 0, fmt.Errorf("resolve data directory: %w", err)
+	}
+	var size int64
+	err = filepath.Walk(filepath.Join(root, id), func(_ string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			if os.IsNotExist(walkErr) {
+				return nil
+			}
+			return walkErr
+		}
+		if !info.IsDir() {
+			size += info.Size()
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("measure media for feed %q: %w", id, err)
+	}
+	return size, nil
+}
+
+func normaliseFeedID(title string) string {
+	id := strings.Join(strings.Fields(title), "_")
+	id = regexp.MustCompile(`[^A-Za-z0-9_-]+`).ReplaceAllString(id, "_")
+	return strings.Trim(id, "_")
 }
 
 func encodeFeedTree(id string, feedTree *toml.Tree) (string, error) {
@@ -149,6 +298,23 @@ func replaceFeedBlock(original, encoded, id string) (string, error) {
 		originalLines = append(originalLines, "")
 	}
 	return strings.Join(originalLines, lineEnding), nil
+}
+
+func removeFeedBlock(original, id string) (string, error) {
+	lineEnding := "\n"
+	if strings.Contains(original, "\r\n") {
+		lineEnding = "\r\n"
+	}
+	lines := strings.Split(strings.ReplaceAll(original, "\r\n", "\n"), "\n")
+	start, end, found := feedBlockBounds(lines, id, true)
+	if !found {
+		return "", fmt.Errorf("feed %q was not found in config", id)
+	}
+	lines = append(lines[:start], lines[end:]...)
+	for start > 0 && start < len(lines) && lines[start-1] == "" && lines[start] == "" {
+		lines = append(lines[:start], lines[start+1:]...)
+	}
+	return strings.Join(lines, lineEnding), nil
 }
 
 func feedBlockBounds(lines []string, id string, preserveCommentedFeeds bool) (int, int, bool) {

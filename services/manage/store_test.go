@@ -1,6 +1,7 @@
 package manage
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -34,7 +35,7 @@ title = "Preserved title"
 	require.NoError(t, os.WriteFile(path, []byte(initial), 0600))
 
 	var change Change
-	store := NewStore(path, func(value Change) { change = value })
+	store := NewStore(path, "", nil, nil, func(value Change) { change = value })
 	input := Feed{
 		ID: "existing", URL: "https://www.youtube.com/channel/new", Enabled: false,
 		MediaType: "audio", AudioFormat: "m4a", AudioBitrate: "192",
@@ -71,7 +72,7 @@ url = "https://example.com/feed"
 format = "audio"
 `), 0600))
 
-	feeds, err := NewStore(path, nil).List()
+	feeds, err := NewStore(path, "", nil, nil, nil).List()
 	require.NoError(t, err)
 	require.Len(t, feeds, 1)
 	assert.Equal(t, 50, feeds[0].PageSize)
@@ -85,9 +86,65 @@ func TestStoreRejectsInvalidFeedIDWithoutWriting(t *testing.T) {
 	initial := "[feeds.one]\nurl = \"https://example.com/feed\"\n"
 	require.NoError(t, os.WriteFile(path, []byte(initial), 0600))
 
-	_, err := NewStore(path, nil).Save("../bad", Feed{})
+	_, err := NewStore(path, "", nil, nil, nil).Save("../bad", Feed{})
 	require.Error(t, err)
 	updated, readErr := os.ReadFile(path)
 	require.NoError(t, readErr)
 	assert.Equal(t, initial, string(updated))
+}
+
+func TestStoreResolveUsesSourceTitleForFeedID(t *testing.T) {
+	resolver := func(_ context.Context, _ string) (string, error) { return "Midnight ASMR", nil }
+	store := NewStore("unused", "", nil, resolver, nil)
+
+	id, err := store.Resolve(context.Background(), "https://www.youtube.com/@MidnightASMR1")
+	require.NoError(t, err)
+	assert.Equal(t, "Midnight_ASMR", id)
+}
+
+func TestStoreDeleteRemovesConfigAndLocalFiles(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "config.toml")
+	initial := "[feeds.one]\nurl = \"https://example.com/one\"\n\n[feeds.two]\nurl = \"https://example.com/two\"\n"
+	require.NoError(t, os.WriteFile(path, []byte(initial), 0600))
+	require.NoError(t, os.Mkdir(filepath.Join(root, "one"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "one", "episode.m4a"), []byte("audio"), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "one.xml"), []byte("rss"), 0600))
+
+	var change Change
+	store := NewStore(path, root, nil, nil, func(value Change) { change = value })
+	require.NoError(t, store.Delete(context.Background(), "one"))
+	assert.Equal(t, "one", change.DeletedID)
+
+	updated, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.NotContains(t, string(updated), "[feeds.one]")
+	assert.Contains(t, string(updated), "[feeds.two]")
+	_, err = os.Stat(filepath.Join(root, "one"))
+	assert.True(t, os.IsNotExist(err))
+	_, err = os.Stat(filepath.Join(root, "one.xml"))
+	assert.True(t, os.IsNotExist(err))
+}
+
+func TestStoreMediaTypeChangeRemovesOldMediaAndReportsUsage(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "config.toml")
+	initial := "[feeds.one]\nurl = \"https://example.com/one\"\nformat = \"audio\"\npage_size = 50\nupdate_period = \"4h\"\nclean = { keep_last = 20 }\n\n[feeds.two]\nurl = \"https://example.com/two\"\n"
+	require.NoError(t, os.WriteFile(path, []byte(initial), 0600))
+	require.NoError(t, os.Mkdir(filepath.Join(root, "one"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "one", "episode.m4a"), []byte("audio"), 0600))
+
+	store := NewStore(path, root, nil, nil, nil)
+	feeds, err := store.List()
+	require.NoError(t, err)
+	require.Len(t, feeds, 2)
+	assert.Equal(t, int64(5), feeds[0].DiskUsage)
+
+	_, err = store.Save("one", Feed{
+		ID: "one", URL: "https://example.com/one", Enabled: true,
+		MediaType: "video", MaxHeight: 1080, PageSize: 50, KeepLast: 20, UpdatePeriod: "4h",
+	})
+	require.NoError(t, err)
+	_, err = os.Stat(filepath.Join(root, "one"))
+	assert.True(t, os.IsNotExist(err))
 }

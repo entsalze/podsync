@@ -17,8 +17,9 @@ import (
 type mockFileSystem struct{}
 
 type mockFeedManager struct {
-	feeds []manage.Feed
-	saved manage.Feed
+	feeds   []manage.Feed
+	saved   manage.Feed
+	deleted string
 }
 
 func (m *mockFeedManager) List() ([]manage.Feed, error) { return m.feeds, nil }
@@ -26,6 +27,13 @@ func (m *mockFeedManager) Save(id string, input manage.Feed) (manage.Feed, error
 	input.ID = id
 	m.saved = input
 	return input, nil
+}
+func (m *mockFeedManager) Resolve(_ context.Context, _ string) (string, error) {
+	return "Midnight_ASMR", nil
+}
+func (m *mockFeedManager) Delete(_ context.Context, id string) error {
+	m.deleted = id
+	return nil
 }
 
 func (m *mockFileSystem) Open(name string) (http.File, error) {
@@ -66,6 +74,19 @@ func TestManagementAPIListsAndSavesFeeds(t *testing.T) {
 	srv.Handler.ServeHTTP(rec, req)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.False(t, manager.saved.Enabled)
+
+	body = strings.NewReader(`{"url":"https://www.youtube.com/@MidnightASMR1"}`)
+	req = httptest.NewRequest(http.MethodPost, "/api/feeds/resolve?token=secret", body)
+	rec = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), `"id":"Midnight_ASMR"`)
+
+	req = httptest.NewRequest(http.MethodDelete, "/api/feeds/one?token=secret", nil)
+	rec = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "one", manager.deleted)
 }
 
 func TestDebugEndpointDisabledByDefault(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -280,6 +281,17 @@ func main() {
 		for {
 			select {
 			case change := <-feedChanges:
+				if change.DeletedID != "" {
+					if oldID, ok := m[change.DeletedID]; ok {
+						c.Remove(oldID)
+						delete(m, change.DeletedID)
+					}
+					manager.RemoveFeed(change.DeletedID)
+					if err := manager.RefreshOPML(ctx); err != nil {
+						log.WithError(err).Error("failed to rebuild OPML after deleting feed")
+					}
+					continue
+				}
 				scheduleFeed(change.Feed, false)
 			case <-ctx.Done():
 				log.Info("shutting down cron")
@@ -294,7 +306,20 @@ func main() {
 	}
 
 	// Run web server
-	managementStore := manage.NewStore(opts.ConfigPath, func(change manage.Change) {
+	resolveSource := func(resolveCtx context.Context, sourceURL string) (string, error) {
+		metadata, err := downloader.PlaylistMetadata(resolveCtx, sourceURL)
+		if err != nil {
+			return "", err
+		}
+		if title := strings.TrimSpace(metadata.Channel); title != "" {
+			return title, nil
+		}
+		if title := strings.TrimSpace(metadata.Title); title != "" {
+			return title, nil
+		}
+		return "", fmt.Errorf("source did not provide a channel name")
+	}
+	managementStore := manage.NewStore(opts.ConfigPath, cfg.Storage.Local.DataDir, database, resolveSource, func(change manage.Change) {
 		feedChanges <- change
 	})
 	srv := web.New(cfg.Server, storage, database, managementStore)

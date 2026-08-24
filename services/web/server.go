@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"expvar"
@@ -59,6 +60,8 @@ type Config struct {
 type FeedManager interface {
 	List() ([]manage.Feed, error)
 	Save(id string, input manage.Feed) (manage.Feed, error)
+	Resolve(ctx context.Context, sourceURL string) (string, error)
+	Delete(ctx context.Context, id string) error
 }
 
 func New(cfg Config, storage http.FileSystem, database db.Storage, managers ...FeedManager) *Server {
@@ -101,10 +104,12 @@ func New(cfg Config, storage http.FileSystem, database db.Storage, managers ...F
 			http.ServeFile(w, r, "./html/admin.html")
 		}))
 		mux.HandleFunc("/api/feeds", managementAuth(cfg.ManagementToken, feedCollectionHandler(manager)))
+		mux.HandleFunc("/api/feeds/resolve", managementAuth(cfg.ManagementToken, feedResolveHandler(manager)))
 		mux.HandleFunc("/api/feeds/", managementAuth(cfg.ManagementToken, feedItemHandler(manager)))
 	} else {
 		mux.HandleFunc("/manage", http.NotFound)
 		mux.HandleFunc("/api/feeds", http.NotFound)
+		mux.HandleFunc("/api/feeds/resolve", http.NotFound)
 		mux.HandleFunc("/api/feeds/", http.NotFound)
 	}
 
@@ -155,13 +160,21 @@ func feedCollectionHandler(manager FeedManager) http.HandlerFunc {
 
 func feedItemHandler(manager FeedManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPut {
+		if r.Method != http.MethodPut && r.Method != http.MethodDelete {
 			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 			return
 		}
 		id := strings.TrimPrefix(r.URL.Path, "/api/feeds/")
 		if id == "" || strings.Contains(id, "/") {
 			writeManagementError(w, http.StatusBadRequest, fmt.Errorf("invalid feed ID"))
+			return
+		}
+		if r.Method == http.MethodDelete {
+			if err := manager.Delete(r.Context(), id); err != nil {
+				writeManagementError(w, http.StatusBadRequest, err)
+				return
+			}
+			writeManagementJSON(w, http.StatusOK, map[string]string{"deleted": id})
 			return
 		}
 		defer r.Body.Close()
@@ -178,6 +191,32 @@ func feedItemHandler(manager FeedManager) http.HandlerFunc {
 			return
 		}
 		writeManagementJSON(w, http.StatusOK, updated)
+	}
+}
+
+func feedResolveHandler(manager FeedManager) http.HandlerFunc {
+	type resolveRequest struct {
+		URL string `json:"url"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+		defer r.Body.Close()
+		var input resolveRequest
+		decoder := json.NewDecoder(io.LimitReader(r.Body, 64<<10))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&input); err != nil {
+			writeManagementError(w, http.StatusBadRequest, fmt.Errorf("invalid request: %w", err))
+			return
+		}
+		id, err := manager.Resolve(r.Context(), input.URL)
+		if err != nil {
+			writeManagementError(w, http.StatusBadRequest, err)
+			return
+		}
+		writeManagementJSON(w, http.StatusOK, map[string]string{"id": id})
 	}
 }
 

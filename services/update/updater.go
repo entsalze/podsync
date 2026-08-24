@@ -54,6 +54,11 @@ func (u *Manager) RemoveFeed(id string) {
 	delete(u.feeds, id)
 }
 
+// RefreshOPML rebuilds the OPML document after a live management change.
+func (u *Manager) RefreshOPML(ctx context.Context) error {
+	return u.buildOPML(ctx)
+}
+
 // Feed returns the current runtime configuration for a feed.
 func (u *Manager) Feed(id string) (*feed.Config, bool) {
 	u.feedsMu.RLock()

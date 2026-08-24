@@ -43,7 +43,7 @@
     button, input, select { font: inherit; }
     input, select { height: 42px; }
     button { cursor: pointer; }
-    button:focus-visible, input:focus-visible, select:focus-visible {
+    button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible {
       outline: 3px solid rgba(116, 70, 166, 0.22);
       outline-offset: 1px;
     }
@@ -66,18 +66,6 @@
     }
 
     .brand { display: flex; align-items: center; gap: 12px; font-weight: 720; font-size: 19px; }
-    .brand-mark {
-      display: grid;
-      place-items: center;
-      width: 32px;
-      height: 32px;
-      border: 1px solid var(--line-strong);
-      border-radius: 50%;
-      color: var(--accent);
-      font-size: 13px;
-      letter-spacing: -0.04em;
-    }
-
     .preview-flag {
       padding: 5px 8px;
       border-radius: var(--radius-sm);
@@ -122,6 +110,9 @@
     }
 
     .tab {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       min-height: 36px;
       padding: 6px 13px;
       border: 0;
@@ -129,6 +120,7 @@
       background: transparent;
       color: var(--muted);
       font-weight: 650;
+      text-decoration: none;
     }
 
     .tab[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.1); }
@@ -239,6 +231,18 @@
     .field label { color: var(--muted); font-size: 12px; font-weight: 680; }
     .hint { margin: 0; color: var(--faint); font-size: 11px; text-wrap: pretty; }
 
+    .advanced-toggle {
+      grid-column: 1 / -1;
+      justify-self: start;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--accent);
+      font-weight: 680;
+    }
+
+    .advanced-toggle:hover { text-decoration: underline; }
+
     .format-note {
       grid-column: 1 / -1;
       padding: 10px 12px;
@@ -348,7 +352,7 @@
 <body>
   <div class="app-shell">
     <header class="topbar">
-      <div class="brand"><span class="brand-mark" aria-hidden="true">PS</span>Podsync</div>
+      <div class="brand">Podsync Management</div>
       <span class="preview-flag">Authenticated management</span>
     </header>
 
@@ -360,7 +364,7 @@
           <p class="lede">Review sources, tune download rules and control future media without touching existing files.</p>
         </div>
         <nav class="tabs" aria-label="Primary views">
-          <button class="tab" type="button" aria-selected="false" disabled>Episodes</button>
+          <a class="tab" id="episodes-tab" href="/" aria-selected="false">Episodes</a>
           <button class="tab" type="button" aria-selected="true">Manage Feeds</button>
         </nav>
       </section>
@@ -377,7 +381,7 @@
         <section class="panel" aria-label="Configured feeds">
           <table class="feed-table">
             <thead>
-              <tr><th>Feed</th><th>Status</th><th>Media</th><th>Retention</th><th>Schedule</th></tr>
+              <tr><th>Feed</th><th>Status</th><th>Media</th><th>Storage</th><th>Retention</th><th>Schedule</th></tr>
             </thead>
             <tbody id="feed-rows"></tbody>
           </table>
@@ -401,46 +405,48 @@
               <input id="feed-url" type="url" required>
             </div>
 
-            <div class="field">
+            <button class="advanced-toggle" id="toggle-advanced" type="button" aria-expanded="false">Show advanced settings</button>
+
+            <div class="field" data-advanced>
               <label for="media-type">Media type</label>
               <select id="media-type"><option>Audio</option><option>Video</option></select>
             </div>
-            <div class="field" id="audio-format-field">
+            <div class="field" id="audio-format-field" data-advanced>
               <label for="audio-format">Audio format</label>
               <select id="audio-format"><option value="m4a">M4A</option><option value="mp3">MP3</option><option value="opus">Opus</option></select>
             </div>
-            <div class="field" id="quality-field">
+            <div class="field" id="quality-field" data-advanced>
               <label for="quality">Bitrate</label>
               <select id="quality"><option value="best">Best available</option><option value="320">320 kbps</option><option value="256">256 kbps</option><option value="192">192 kbps</option><option value="128">128 kbps</option><option value="96">96 kbps</option></select>
             </div>
-            <div class="field" id="height-field" hidden>
+            <div class="field" id="height-field" data-advanced hidden>
               <label for="max-height">Maximum height</label>
               <select id="max-height"><option value="0">Original</option><option>2160</option><option>1440</option><option>1080</option><option>720</option><option>480</option></select>
             </div>
-            <div class="field">
+            <div class="field" data-advanced>
               <label for="page-size">Items to inspect</label>
               <input id="page-size" type="number" min="1" max="1000" required>
               <p class="hint">Provider items checked each update.</p>
             </div>
-            <div class="field">
+            <div class="field" data-advanced>
               <label for="keep-last">Media to retain</label>
               <input id="keep-last" type="number" min="1" max="1000" required>
               <p class="hint">Also caps downloads after filtering.</p>
             </div>
-            <div class="field">
+            <div class="field" data-advanced>
               <label for="min-duration">Minimum duration</label>
               <input id="min-duration" type="number" min="0" step="60">
               <p class="hint">Seconds. Use 0 to disable.</p>
             </div>
-            <div class="field">
+            <div class="field" data-advanced>
               <label for="update-period">Update period</label>
               <input id="update-period" type="text" placeholder="4h" required>
               <p class="hint">Examples: 30m, 4h, 1h30m.</p>
             </div>
 
-            <div class="format-note">Format changes apply to future downloads only. Existing media will not be converted or removed.</div>
+            <div class="format-note" data-advanced>Bitrate and container changes apply to future downloads only. Switching between audio and video clears old media before downloading the new format.</div>
 
-            <div class="switch-row">
+            <div class="switch-row" data-advanced>
               <div><strong>Feed enabled</strong><p class="hint">Disabled feeds remain in configuration and keep their files.</p></div>
               <label class="switch"><input id="enabled" type="checkbox" checked aria-label="Feed enabled"><span></span></label>
             </div>
@@ -449,7 +455,10 @@
           </form>
 
           <div class="editor-actions">
-            <button class="btn btn-danger" id="disable-feed" type="button">Disable feed</button>
+            <div class="action-group">
+              <button class="btn" id="disable-feed" type="button">Disable feed</button>
+              <button class="btn btn-danger" id="delete-feed" type="button">Delete feed</button>
+            </div>
             <div class="action-group">
               <button class="btn" id="preview-toml" type="button">Preview TOML</button>
               <button class="btn btn-primary" form="feed-form" type="submit">Save changes</button>
@@ -472,10 +481,14 @@
       url: document.getElementById('feed-url'), media: document.getElementById('media-type'), audioFormat: document.getElementById('audio-format'), quality: document.getElementById('quality'),
       pageSize: document.getElementById('page-size'), keepLast: document.getElementById('keep-last'), minDuration: document.getElementById('min-duration'), period: document.getElementById('update-period'), maxHeight: document.getElementById('max-height'),
       enabled: document.getElementById('enabled'), audioField: document.getElementById('audio-format-field'), qualityField: document.getElementById('quality-field'), heightField: document.getElementById('height-field'),
-      preview: document.getElementById('toml-preview'), toast: document.getElementById('toast')
+      preview: document.getElementById('toml-preview'), toast: document.getElementById('toast'),
+      episodesTab: document.getElementById('episodes-tab'), advancedToggle: document.getElementById('toggle-advanced'),
+      advancedFields: document.querySelectorAll('[data-advanced]'), disable: document.getElementById('disable-feed'),
+      deleteFeed: document.getElementById('delete-feed')
     };
 
     let selectedFeed = null;
+    let advancedVisible = true;
 
     function apiURL(path) {
       const url = new URL(path, window.location.href);
@@ -488,6 +501,23 @@
       const node = document.createElement('span');
       node.textContent = String(value);
       return node.innerHTML;
+    }
+
+    function formatBytes(bytes) {
+      if (!bytes) return '0 B';
+      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+      const value = bytes / (1024 ** index);
+      return `${value.toFixed(value >= 10 || index === 0 ? 0 : 1)} ${units[index]}`;
+    }
+
+    function setAdvancedVisibility(visible) {
+      advancedVisible = visible;
+      elements.advancedToggle.hidden = selectedFeed !== null;
+      elements.advancedToggle.textContent = visible ? 'Hide advanced settings' : 'Show advanced settings';
+      elements.advancedToggle.setAttribute('aria-expanded', String(visible));
+      elements.advancedFields.forEach(field => { field.hidden = !visible; });
+      updateFormatFields();
     }
 
     async function api(path, options = {}) {
@@ -508,6 +538,7 @@
           <td><div class="feed-name">${escapeHTML(feed.id.replaceAll('_', ' '))}</div><div class="feed-id">${escapeHTML(feed.id)}</div></td>
           <td><span class="mobile-label">Status</span><span class="status ${feed.enabled ? '' : 'disabled'}">${feed.enabled ? 'Enabled' : 'Disabled'}</span></td>
           <td><span class="mobile-label">Media</span><span class="meta">${escapeHTML(feed.media_type === 'audio' ? `Audio · ${feed.audio_format.toUpperCase()}` : 'Video')}</span></td>
+          <td><span class="mobile-label">Storage</span><span class="meta">${formatBytes(feed.disk_usage)}</span></td>
           <td><span class="mobile-label">Retention</span><span class="meta">${feed.keep_last} items</span></td>
           <td><span class="mobile-label">Schedule</span><span class="meta">Every ${escapeHTML(feed.update_period)}</span></td>
         </tr>`).join('');
@@ -538,14 +569,16 @@
       elements.status.textContent = feed.enabled ? 'Enabled' : 'Disabled';
       elements.status.className = `status ${feed.enabled ? '' : 'disabled'}`;
       elements.preview.style.display = 'none';
-      updateFormatFields();
+      elements.disable.hidden = false;
+      elements.deleteFeed.hidden = false;
+      setAdvancedVisibility(true);
     }
 
     function updateFormatFields() {
       const isAudio = elements.media.value === 'Audio';
-      elements.audioField.hidden = !isAudio;
-      elements.qualityField.hidden = !isAudio;
-      elements.heightField.hidden = isAudio;
+      elements.audioField.hidden = !advancedVisible || !isAudio;
+      elements.qualityField.hidden = !advancedVisible || !isAudio;
+      elements.heightField.hidden = !advancedVisible || isAudio;
     }
 
     function buildTomlPreview() {
@@ -574,6 +607,13 @@
     }
 
     elements.search.addEventListener('input', event => renderRows(event.target.value));
+    elements.episodesTab.href = apiURL('/');
+    elements.advancedToggle.addEventListener('click', () => setAdvancedVisibility(!advancedVisible));
+    elements.url.addEventListener('input', () => {
+      if (selectedFeed) return;
+      elements.id.value = '';
+      elements.editorId.textContent = 'channel_name';
+    });
     elements.media.addEventListener('change', updateFormatFields);
     elements.audioFormat.addEventListener('change', updateFormatFields);
     elements.enabled.addEventListener('change', () => {
@@ -590,29 +630,60 @@
       elements.enabled.dispatchEvent(new Event('change'));
       elements.form.requestSubmit();
     });
+    elements.deleteFeed.addEventListener('click', async () => {
+      if (!selectedFeed) return;
+      const id = selectedFeed.id;
+      if (!window.confirm(`Delete ${id} and all of its downloaded media? This cannot be undone.`)) return;
+      try {
+        await api(`/api/feeds/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        feeds = feeds.filter(feed => feed.id !== id);
+        renderRows(elements.search.value);
+        if (feeds.length) loadFeed(feeds[0]); else document.getElementById('add-feed').click();
+        showToast(`${id} and its local media were deleted.`);
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
     document.getElementById('add-feed').addEventListener('click', () => {
       selectedFeed = null;
       elements.form.reset();
       elements.title.textContent = 'Add feed';
       elements.editorId.textContent = 'new_feed';
-      elements.idField.hidden = false;
-      elements.id.required = true;
+      elements.idField.hidden = true;
+      elements.id.required = false;
       elements.id.value = '';
-      elements.pageSize.value = 50;
+      elements.media.value = 'Audio';
+      elements.audioFormat.value = 'm4a';
+      elements.quality.value = 'best';
+      elements.maxHeight.value = 0;
+      elements.pageSize.value = 100;
       elements.keepLast.value = 20;
       elements.minDuration.value = 0;
       elements.period.value = '4h';
       elements.enabled.checked = true;
       elements.preview.style.display = 'none';
-      updateFormatFields();
-      elements.id.focus();
+      elements.disable.hidden = true;
+      elements.deleteFeed.hidden = true;
+      setAdvancedVisibility(false);
+      elements.url.focus();
     });
     elements.form.addEventListener('submit', async event => {
       event.preventDefault();
       if (!elements.form.reportValidity()) return;
-      const id = selectedFeed?.id || elements.id.value;
-      const payload = {
-        id,
+      try {
+        let id = selectedFeed?.id;
+        if (!id) {
+          showToast('Reading the channel name...');
+          const resolved = await api('/api/feeds/resolve', { method: 'POST', body: JSON.stringify({ url: elements.url.value }) });
+          id = resolved.id;
+          elements.id.value = id;
+          elements.editorId.textContent = id;
+        }
+        if (!selectedFeed && feeds.some(feed => feed.id.toLowerCase() === id.toLowerCase())) {
+          throw new Error(`A feed named ${id} already exists.`);
+        }
+        const payload = {
+          id,
         url: elements.url.value,
         enabled: elements.enabled.checked,
         media_type: elements.media.value.toLowerCase(),
@@ -623,8 +694,7 @@
         keep_last: Number(elements.keepLast.value),
         minimum_duration: Number(elements.minDuration.value || 0),
         update_period: elements.period.value
-      };
-      try {
+        };
         const saved = await api(`/api/feeds/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) });
         const index = feeds.findIndex(feed => feed.id === saved.id);
         if (index === -1) feeds.push(saved); else feeds[index] = saved;
