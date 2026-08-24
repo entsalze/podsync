@@ -281,6 +281,10 @@ func main() {
 		for {
 			select {
 			case change := <-feedChanges:
+				if change.RefreshID != "" {
+					updates <- change.RefreshID
+					continue
+				}
 				if change.DeletedID != "" {
 					if oldID, ok := m[change.DeletedID]; ok {
 						c.Remove(oldID)
@@ -293,6 +297,9 @@ func main() {
 					continue
 				}
 				scheduleFeed(change.Feed, false)
+				if change.RunNow && !change.Feed.Disabled {
+					updates <- change.Feed.ID
+				}
 			case <-ctx.Done():
 				log.Info("shutting down cron")
 				c.Stop()

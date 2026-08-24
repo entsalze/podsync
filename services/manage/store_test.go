@@ -48,6 +48,7 @@ title = "Preserved title"
 	assert.Equal(t, "192", saved.AudioBitrate)
 
 	require.NotNil(t, change.Feed)
+	assert.False(t, change.RunNow)
 	assert.True(t, change.Feed.Disabled)
 	assert.Equal(t, "{{pub_date}}_{{id}}", change.Feed.FilenameTemplate)
 	assert.Equal(t, "Preserved title", change.Feed.Custom.Title)
@@ -60,6 +61,27 @@ title = "Preserved title"
 	assert.Contains(t, string(updated), `filename_template = "{{pub_date}}_{{id}}"`)
 	assert.Contains(t, string(updated), `title = "Preserved title"`)
 	assert.Contains(t, string(updated), "disabled = true")
+}
+
+func TestStoreNewFeedRunsImmediatelyAndManualRefreshQueuesExistingFeed(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(path, []byte("[feeds.existing]\nurl = \"https://example.com/existing\"\n"), 0600))
+
+	var changes []Change
+	store := NewStore(path, "", nil, nil, func(value Change) { changes = append(changes, value) })
+	_, err := store.Save("new_feed", Feed{
+		ID: "new_feed", URL: "https://example.com/new", Enabled: true,
+		MediaType: "audio", AudioFormat: "m4a", AudioBitrate: "best",
+		PageSize: 100, KeepLast: 20, MinimumDuration: 600, UpdatePeriod: "4h",
+	})
+	require.NoError(t, err)
+	require.Len(t, changes, 1)
+	assert.True(t, changes[0].RunNow)
+	assert.Equal(t, "new_feed", changes[0].Feed.ID)
+
+	require.NoError(t, store.Refresh("existing"))
+	require.Len(t, changes, 2)
+	assert.Equal(t, "existing", changes[1].RefreshID)
 }
 
 func TestStoreListAppliesDefaultsAndGlobalCleanup(t *testing.T) {

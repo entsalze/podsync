@@ -41,6 +41,8 @@ type Feed struct {
 type Change struct {
 	Feed      *feed.Config
 	DeletedID string
+	RefreshID string
+	RunNow    bool
 }
 
 type SourceResolver func(context.Context, string) (string, error)
@@ -137,7 +139,7 @@ func (s *Store) Save(id string, input Feed) (Feed, error) {
 		cleanupErr = s.deleteFeedData(context.Background(), id)
 	}
 	if s.onChange != nil {
-		s.onChange(Change{Feed: config})
+		s.onChange(Change{Feed: config, RunNow: previous == nil})
 	}
 	if cleanupErr != nil {
 		return Feed{}, fmt.Errorf("feed format changed but old media cleanup was incomplete: %w", cleanupErr)
@@ -167,6 +169,30 @@ func (s *Store) Resolve(ctx context.Context, sourceURL string) (string, error) {
 		return "", fmt.Errorf("source did not provide a usable channel name")
 	}
 	return id, nil
+}
+
+func (s *Store) Refresh(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !feedIDPattern.MatchString(id) {
+		return fmt.Errorf("invalid feed ID")
+	}
+	configs, err := s.loadFeeds()
+	if err != nil {
+		return err
+	}
+	config, ok := configs[id]
+	if !ok {
+		return fmt.Errorf("feed %q was not found", id)
+	}
+	if config.Disabled {
+		return fmt.Errorf("disabled feeds cannot be refreshed")
+	}
+	if s.onChange != nil {
+		s.onChange(Change{RefreshID: id})
+	}
+	return nil
 }
 
 func (s *Store) Delete(ctx context.Context, id string) error {

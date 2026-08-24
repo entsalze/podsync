@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Podsync Management Preview</title>
+  <title>Podsync Management</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <style>
     :root {
       color-scheme: light;
@@ -43,7 +44,7 @@
     button, input, select { font: inherit; }
     input, select { height: 42px; }
     button { cursor: pointer; }
-    button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible {
+    button:focus-visible, input:focus-visible, select:focus-visible {
       outline: 3px solid rgba(116, 70, 166, 0.22);
       outline-offset: 1px;
     }
@@ -101,30 +102,6 @@
     h1 { margin: 0; font-size: clamp(28px, 4vw, 42px); line-height: 1.05; letter-spacing: -0.035em; }
     .lede { max-width: 620px; margin: 10px 0 0; color: var(--muted); text-wrap: pretty; }
 
-    .tabs {
-      display: inline-flex;
-      gap: 4px;
-      padding: 4px;
-      background: #e9e9ed;
-      border-radius: 9px;
-    }
-
-    .tab {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 36px;
-      padding: 6px 13px;
-      border: 0;
-      border-radius: 6px;
-      background: transparent;
-      color: var(--muted);
-      font-weight: 650;
-      text-decoration: none;
-    }
-
-    .tab[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.1); }
-
     .toolbar {
       display: flex;
       align-items: center;
@@ -134,7 +111,7 @@
     }
 
     .search { position: relative; flex: 1; max-width: 420px; }
-    .search input, .field input, .field select {
+    .search input, .sort-control select, .field input, .field select {
       width: 100%;
       padding: 0 12px;
       border: 1px solid var(--line-strong);
@@ -143,7 +120,10 @@
       color: var(--text);
     }
 
-    .field select {
+    .sort-control { width: 190px; }
+    .sort-control select { height: 42px; }
+
+    .sort-control select, .field select {
       appearance: none;
       padding-right: 38px;
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%231d1d1f' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
@@ -185,6 +165,18 @@
     .feed-table tbody tr { cursor: pointer; }
     .feed-table tbody tr:hover { background: #fbf9fd; }
     .feed-name { font-weight: 700; }
+    .feed-title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    .feed-row-action {
+      padding: 2px 6px;
+      border: 1px solid var(--line-strong);
+      border-radius: 5px;
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
+    }
+    .feed-row-action:hover { border-color: var(--accent); color: var(--accent); }
+    .feed-row-action:disabled { cursor: not-allowed; opacity: .45; }
     .feed-id { margin-top: 3px; color: var(--faint); font: 12px/1.3 ui-monospace, SFMono-Regular, Consolas, monospace; }
     .meta { color: var(--muted); font-size: 13px; }
 
@@ -271,8 +263,8 @@
     .switch input:checked + span { background: var(--accent); }
     .switch input:checked + span::after { transform: translateX(20px); }
 
-    .editor-actions { display: flex; justify-content: space-between; gap: 10px; margin-top: 20px; }
-    .action-group { display: flex; gap: 8px; }
+    .editor-actions { display: grid; grid-template-columns: repeat(4, max-content); justify-content: end; gap: 8px; margin-top: 20px; }
+    .editor-actions .btn { min-height: 38px; padding: 7px 12px; }
 
     .toml-preview {
       display: none;
@@ -327,9 +319,9 @@
       .preview-flag { display: none; }
       .workspace { width: min(100% - 24px, 1180px); padding-top: 22px; }
       .page-heading { display: block; }
-      .tabs { margin-top: 20px; }
       .toolbar { align-items: stretch; flex-direction: column; }
       .search { max-width: none; }
+      .sort-control { width: 100%; }
       .feed-table thead { display: none; }
       .feed-table, .feed-table tbody, .feed-table tr, .feed-table td { display: block; width: 100%; }
       .feed-table tr { padding: 13px 14px; border-top: 1px solid var(--line); }
@@ -339,9 +331,8 @@
       .mobile-label { display: inline; }
       .form-grid { grid-template-columns: 1fr; }
       .field.full, .format-note, .switch-row, .toml-preview { grid-column: 1; }
-      .editor-actions { align-items: stretch; flex-direction: column-reverse; }
-      .action-group { display: grid; grid-template-columns: 1fr 1fr; }
-      .editor-actions > .btn { width: 100%; }
+      .editor-actions { grid-template-columns: 1fr 1fr; }
+      .editor-actions .btn { width: 100%; }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -363,16 +354,24 @@
           <h1>Manage feeds</h1>
           <p class="lede">Review sources, tune download rules and control future media without touching existing files.</p>
         </div>
-        <nav class="tabs" aria-label="Primary views">
-          <a class="tab" id="episodes-tab" href="/" aria-selected="false">Episodes</a>
-          <button class="tab" type="button" aria-selected="true">Manage Feeds</button>
-        </nav>
       </section>
 
       <div class="toolbar">
         <label class="search">
           <span class="mobile-label">Search feeds</span>
           <input id="feed-search" type="search" placeholder="Search by name, ID or source URL" autocomplete="off">
+        </label>
+        <label class="sort-control">
+          <span class="mobile-label">Sort feeds</span>
+          <select id="feed-sort" aria-label="Sort feeds">
+            <option value="name-asc">Name: A–Z</option>
+            <option value="name-desc">Name: Z–A</option>
+            <option value="storage-desc">Storage: largest</option>
+            <option value="storage-asc">Storage: smallest</option>
+            <option value="retention-desc">Retention: most</option>
+            <option value="retention-asc">Retention: least</option>
+            <option value="enabled-first">Status: enabled first</option>
+          </select>
         </label>
         <button class="btn btn-primary" id="add-feed" type="button">Add feed</button>
       </div>
@@ -455,14 +454,10 @@
           </form>
 
           <div class="editor-actions">
-            <div class="action-group">
-              <button class="btn" id="disable-feed" type="button">Disable feed</button>
-              <button class="btn btn-danger" id="delete-feed" type="button">Delete feed</button>
-            </div>
-            <div class="action-group">
-              <button class="btn" id="preview-toml" type="button">Preview TOML</button>
-              <button class="btn btn-primary" form="feed-form" type="submit">Save changes</button>
-            </div>
+            <button class="btn" id="disable-feed" type="button">Disable</button>
+            <button class="btn btn-danger" id="delete-feed" type="button">Delete</button>
+            <button class="btn" id="preview-toml" type="button">Preview</button>
+            <button class="btn btn-primary" form="feed-form" type="submit">Save</button>
           </div>
         </aside>
       </div>
@@ -475,14 +470,14 @@
     let feeds = [];
 
     const elements = {
-      rows: document.getElementById('feed-rows'), search: document.getElementById('feed-search'), empty: document.getElementById('empty-state'),
+      rows: document.getElementById('feed-rows'), search: document.getElementById('feed-search'), sort: document.getElementById('feed-sort'), empty: document.getElementById('empty-state'),
       form: document.getElementById('feed-form'), title: document.getElementById('editor-title'), editorId: document.getElementById('editor-id'), status: document.getElementById('editor-status'),
       idField: document.getElementById('feed-id-field'), id: document.getElementById('feed-id'),
       url: document.getElementById('feed-url'), media: document.getElementById('media-type'), audioFormat: document.getElementById('audio-format'), quality: document.getElementById('quality'),
       pageSize: document.getElementById('page-size'), keepLast: document.getElementById('keep-last'), minDuration: document.getElementById('min-duration'), period: document.getElementById('update-period'), maxHeight: document.getElementById('max-height'),
       enabled: document.getElementById('enabled'), audioField: document.getElementById('audio-format-field'), qualityField: document.getElementById('quality-field'), heightField: document.getElementById('height-field'),
       preview: document.getElementById('toml-preview'), toast: document.getElementById('toast'),
-      episodesTab: document.getElementById('episodes-tab'), advancedToggle: document.getElementById('toggle-advanced'),
+      advancedToggle: document.getElementById('toggle-advanced'),
       advancedFields: document.querySelectorAll('[data-advanced]'), disable: document.getElementById('disable-feed'),
       deleteFeed: document.getElementById('delete-feed')
     };
@@ -533,9 +528,20 @@
     function renderRows(query = '') {
       const needle = query.trim().toLowerCase();
       const filtered = feeds.filter(feed => `${feed.id} ${feed.url}`.toLowerCase().includes(needle));
+      const byName = (a, b) => a.id.localeCompare(b.id, undefined, { sensitivity: 'base' });
+      const sorters = {
+        'name-asc': byName,
+        'name-desc': (a, b) => byName(b, a),
+        'storage-desc': (a, b) => (b.disk_usage - a.disk_usage) || byName(a, b),
+        'storage-asc': (a, b) => (a.disk_usage - b.disk_usage) || byName(a, b),
+        'retention-desc': (a, b) => (b.keep_last - a.keep_last) || byName(a, b),
+        'retention-asc': (a, b) => (a.keep_last - b.keep_last) || byName(a, b),
+        'enabled-first': (a, b) => (Number(b.enabled) - Number(a.enabled)) || byName(a, b)
+      };
+      filtered.sort(sorters[elements.sort.value] || byName);
       elements.rows.innerHTML = filtered.map(feed => `
         <tr data-feed-id="${escapeHTML(feed.id)}" tabindex="0">
-          <td><div class="feed-name">${escapeHTML(feed.id.replaceAll('_', ' '))}</div><div class="feed-id">${escapeHTML(feed.id)}</div></td>
+          <td><div class="feed-title-row"><div class="feed-name">${escapeHTML(feed.id.replaceAll('_', ' '))}</div><button class="feed-row-action" type="button" data-copy-feed="${escapeHTML(feed.id)}">Copy link</button><button class="feed-row-action" type="button" data-refresh-feed="${escapeHTML(feed.id)}" ${feed.enabled ? '' : 'disabled'}>Refresh now</button></div><div class="feed-id">${escapeHTML(feed.id)}</div></td>
           <td><span class="mobile-label">Status</span><span class="status ${feed.enabled ? '' : 'disabled'}">${feed.enabled ? 'Enabled' : 'Disabled'}</span></td>
           <td><span class="mobile-label">Media</span><span class="meta">${escapeHTML(feed.media_type === 'audio' ? `Audio · ${feed.audio_format.toUpperCase()}` : 'Video')}</span></td>
           <td><span class="mobile-label">Storage</span><span class="meta">${formatBytes(feed.disk_usage)}</span></td>
@@ -547,6 +553,29 @@
         const select = () => loadFeed(feeds.find(feed => feed.id === row.dataset.feedId));
         row.addEventListener('click', select);
         row.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') select(); });
+      });
+      elements.rows.querySelectorAll('[data-copy-feed]').forEach(button => {
+        button.addEventListener('click', async event => {
+          event.stopPropagation();
+          const link = apiURL(`/${encodeURIComponent(button.dataset.copyFeed)}.xml`).toString();
+          try {
+            await navigator.clipboard.writeText(link);
+            showToast('Subscription link copied.');
+          } catch {
+            showToast('Unable to copy the subscription link.');
+          }
+        });
+      });
+      elements.rows.querySelectorAll('[data-refresh-feed]').forEach(button => {
+        button.addEventListener('click', async event => {
+          event.stopPropagation();
+          try {
+            await api(`/api/feeds/refresh/${encodeURIComponent(button.dataset.refreshFeed)}`, { method: 'POST' });
+            showToast(`${button.dataset.refreshFeed} was queued for refresh.`);
+          } catch (error) {
+            showToast(error.message);
+          }
+        });
       });
     }
 
@@ -607,7 +636,7 @@
     }
 
     elements.search.addEventListener('input', event => renderRows(event.target.value));
-    elements.episodesTab.href = apiURL('/');
+    elements.sort.addEventListener('change', () => renderRows(elements.search.value));
     elements.advancedToggle.addEventListener('click', () => setAdvancedVisibility(!advancedVisible));
     elements.url.addEventListener('input', () => {
       if (selectedFeed) return;
@@ -658,7 +687,7 @@
       elements.maxHeight.value = 0;
       elements.pageSize.value = 100;
       elements.keepLast.value = 20;
-      elements.minDuration.value = 0;
+      elements.minDuration.value = 600;
       elements.period.value = '4h';
       elements.enabled.checked = true;
       elements.preview.style.display = 'none';

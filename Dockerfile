@@ -24,8 +24,8 @@ RUN apk --no-cache add ca-certificates python3 py3-pip ffmpeg tzdata libc6-compa
 RUN chmod 777 /usr/local/bin
 COPY --from=builder /usr/bin/yt-dlp /usr/local/bin/youtube-dl
 COPY --from=builder /build/bin/podsync /app/podsync
-COPY --from=builder /build/html/index.html /app/html/index.html
 COPY --from=builder /build/html/admin.html /app/html/admin.html
+COPY --from=builder /build/html/favicon.svg /app/html/favicon.svg
 
 ENTRYPOINT ["/app/podsync"]
 CMD ["--no-banner"]

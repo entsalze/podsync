@@ -62,6 +62,7 @@ type FeedManager interface {
 	Save(id string, input manage.Feed) (manage.Feed, error)
 	Resolve(ctx context.Context, sourceURL string) (string, error)
 	Delete(ctx context.Context, id string) error
+	Refresh(id string) error
 }
 
 func New(cfg Config, storage http.FileSystem, database db.Storage, managers ...FeedManager) *Server {
@@ -89,28 +90,53 @@ func New(cfg Config, storage http.FileSystem, database db.Storage, managers ...F
 	fileServer := http.FileServer(storage)
 
 	log.Debugf("handle path: /%s", cfg.Path)
-	mux.Handle(fmt.Sprintf("/%s", cfg.Path), fileServer)
 
 	// Add health check endpoint
 	mux.HandleFunc("/health", srv.healthCheckHandler)
+	mux.HandleFunc("/manage", http.NotFound)
+	mux.HandleFunc("/favicon.svg", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+		http.ServeFile(w, r, "./html/favicon.svg")
+	})
 
 	if cfg.ManagementUIEnabled && len(managers) > 0 && managers[0] != nil {
 		manager := managers[0]
-		mux.HandleFunc("/manage", managementAuth(cfg.ManagementToken, func(w http.ResponseWriter, r *http.Request) {
+		managementPage := managementAuth(cfg.ManagementToken, func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodGet {
 				http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 				return
 			}
 			http.ServeFile(w, r, "./html/admin.html")
-		}))
+		})
 		mux.HandleFunc("/api/feeds", managementAuth(cfg.ManagementToken, feedCollectionHandler(manager)))
 		mux.HandleFunc("/api/feeds/resolve", managementAuth(cfg.ManagementToken, feedResolveHandler(manager)))
+		mux.HandleFunc("/api/feeds/refresh/", managementAuth(cfg.ManagementToken, feedRefreshHandler(manager)))
 		mux.HandleFunc("/api/feeds/", managementAuth(cfg.ManagementToken, feedItemHandler(manager)))
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/" {
+				managementPage(w, r)
+				return
+			}
+			if cfg.Path == "" {
+				fileServer.ServeHTTP(w, r)
+				return
+			}
+			http.NotFound(w, r)
+		})
 	} else {
-		mux.HandleFunc("/manage", http.NotFound)
 		mux.HandleFunc("/api/feeds", http.NotFound)
 		mux.HandleFunc("/api/feeds/resolve", http.NotFound)
+		mux.HandleFunc("/api/feeds/refresh/", http.NotFound)
 		mux.HandleFunc("/api/feeds/", http.NotFound)
+		if cfg.Path == "" {
+			mux.Handle("/", fileServer)
+		}
+	}
+	if cfg.Path != "" {
+		mux.Handle(fmt.Sprintf("/%s", cfg.Path), fileServer)
 	}
 
 	// Optionally enable debug endpoints (disabled by default for security)
@@ -217,6 +243,25 @@ func feedResolveHandler(manager FeedManager) http.HandlerFunc {
 			return
 		}
 		writeManagementJSON(w, http.StatusOK, map[string]string{"id": id})
+	}
+}
+
+func feedRefreshHandler(manager FeedManager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+		id := strings.TrimPrefix(r.URL.Path, "/api/feeds/refresh/")
+		if id == "" || strings.Contains(id, "/") {
+			writeManagementError(w, http.StatusBadRequest, fmt.Errorf("invalid feed ID"))
+			return
+		}
+		if err := manager.Refresh(id); err != nil {
+			writeManagementError(w, http.StatusBadRequest, err)
+			return
+		}
+		writeManagementJSON(w, http.StatusAccepted, map[string]string{"refreshing": id})
 	}
 }
 

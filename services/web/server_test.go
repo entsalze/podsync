@@ -17,9 +17,10 @@ import (
 type mockFileSystem struct{}
 
 type mockFeedManager struct {
-	feeds   []manage.Feed
-	saved   manage.Feed
-	deleted string
+	feeds     []manage.Feed
+	saved     manage.Feed
+	deleted   string
+	refreshed string
 }
 
 func (m *mockFeedManager) List() ([]manage.Feed, error) { return m.feeds, nil }
@@ -33,6 +34,10 @@ func (m *mockFeedManager) Resolve(_ context.Context, _ string) (string, error) {
 }
 func (m *mockFeedManager) Delete(_ context.Context, id string) error {
 	m.deleted = id
+	return nil
+}
+func (m *mockFeedManager) Refresh(id string) error {
+	m.refreshed = id
 	return nil
 }
 
@@ -56,6 +61,20 @@ func TestManagementAPIRequiresToken(t *testing.T) {
 		srv.Handler.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusForbidden, rec.Code)
 	}
+}
+
+func TestManagementPageIsRootAndLegacyManagePathIsGone(t *testing.T) {
+	srv := New(Config{ManagementUIEnabled: true, ManagementToken: "secret"}, &mockFileSystem{}, nil, &mockFeedManager{})
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+
+	req = httptest.NewRequest(http.MethodGet, "/manage?token=secret", nil)
+	rec = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
 }
 
 func TestManagementAPIListsAndSavesFeeds(t *testing.T) {
@@ -87,6 +106,12 @@ func TestManagementAPIListsAndSavesFeeds(t *testing.T) {
 	srv.Handler.ServeHTTP(rec, req)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "one", manager.deleted)
+
+	req = httptest.NewRequest(http.MethodPost, "/api/feeds/refresh/one?token=secret", nil)
+	rec = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusAccepted, rec.Code)
+	assert.Equal(t, "one", manager.refreshed)
 }
 
 func TestDebugEndpointDisabledByDefault(t *testing.T) {

@@ -29,9 +29,6 @@ func NewLocal(rootDir string, webUIEnabled bool, noListing bool) (*Local, error)
 }
 
 func (l *Local) Open(name string) (http.File, error) {
-	if name == "/index.html" && l.WebUIEnabled {
-		return os.Open("./html/index.html")
-	}
 	path := filepath.Join(l.rootDir, name)
 	file, err := os.Open(path)
 	if err != nil {
