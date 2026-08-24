@@ -341,7 +341,30 @@
     
     <!-- Include the OPML/RSS parsing functions -->
     <script>
-        // Paste your JavaScript functions here
+        /**
+         * Carries access parameters from the current page to same-origin resources.
+         * This supports reverse proxies that protect Podsync with a query token
+         * without leaking that token to external links.
+         * @param {string} url - Relative or absolute resource URL
+         * @returns {string} URL with current access parameters when same-origin
+         */
+        function withCurrentAccessParams(url) {
+            const resourceUrl = new URL(url, window.location.href);
+
+            if (resourceUrl.origin !== window.location.origin) {
+                return resourceUrl.href;
+            }
+
+            const currentParams = new URLSearchParams(window.location.search);
+            currentParams.forEach((value, key) => {
+                if (!resourceUrl.searchParams.has(key)) {
+                    resourceUrl.searchParams.set(key, value);
+                }
+            });
+
+            return resourceUrl.href;
+        }
+
         /**
          * Loads OPML XML from a URL and converts it to a JavaScript dictionary
          * @param {string} url - The URL containing the OPML XML
@@ -350,7 +373,7 @@
         async function loadOPMLFromURL(url) {
             try {
                 // Fetch the OPML XML from the URL
-                const response = await fetch(url);
+                const response = await fetch(withCurrentAccessParams(url));
                 
                 if (!response.ok) {
                     throw new Error(`Error loading OPML. HTTP status: ${response.status}`);
@@ -446,7 +469,8 @@
          */
         async function fetchEpisodesFromFeed(feedUrl) {
             try {
-                const response = await fetch(feedUrl);
+                const authenticatedFeedUrl = withCurrentAccessParams(feedUrl);
+                const response = await fetch(authenticatedFeedUrl);
                 
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
@@ -462,7 +486,7 @@
                     throw new Error('RSS parsing error: ' + parserError.textContent);
                 }
                 
-                return parseRSSEpisodes(rssDoc, feedUrl);
+                return parseRSSEpisodes(rssDoc, authenticatedFeedUrl);
                 
             } catch (error) {
                 console.error(`Error fetching feed ${feedUrl}:`, error);
@@ -509,7 +533,8 @@
                     image: item.querySelector('itunes\\:image, image[itunes]')?.getAttribute('href') || 
                            channel.querySelector('itunes\\:image, image[itunes]')?.getAttribute('href') || 
                            channel.querySelector('image url')?.textContent || '',
-                    enclosureUrl: item.querySelector('enclosure')?.getAttribute('url') || '',
+                    enclosureUrl: item.querySelector('enclosure')?.getAttribute('url') ?
+                        withCurrentAccessParams(item.querySelector('enclosure').getAttribute('url')) : '',
                     enclosureType: item.querySelector('enclosure')?.getAttribute('type') || '',
                     enclosureLength: item.querySelector('enclosure')?.getAttribute('length') || ''
                 };
@@ -769,6 +794,7 @@
 
         // Load episodes when page loads
         document.addEventListener('DOMContentLoaded', function() {
+            document.querySelector('a[href="podsync.opml"]').href = withCurrentAccessParams('podsync.opml');
             loadEpisodes();
         });
     </script>
