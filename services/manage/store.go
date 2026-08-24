@@ -113,8 +113,16 @@ func (s *Store) Save(id string, input Feed) (Feed, error) {
 	feedTree, _ := feedsTree.Get(id).(*toml.Tree)
 	if feedTree == nil {
 		feedTree, _ = toml.TreeFromMap(map[string]interface{}{})
-		feedsTree.Set(id, feedTree)
+	} else {
+		// Detach the feed from the parsed document before re-encoding it. Parsed
+		// subtrees retain source positions, which can make go-toml emit an
+		// existing nested key twice after it is updated and embedded in a new tree.
+		feedTree, err = toml.TreeFromMap(feedTree.ToMap())
+		if err != nil {
+			return Feed{}, fmt.Errorf("copy feed config: %w", err)
+		}
 	}
+	feedsTree.Set(id, feedTree)
 
 	config := fromAPI(id, input)
 	setFeedTree(feedTree, config, input)

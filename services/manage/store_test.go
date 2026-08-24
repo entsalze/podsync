@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -82,6 +83,40 @@ func TestStoreNewFeedRunsImmediatelyAndManualRefreshQueuesExistingFeed(t *testin
 	require.NoError(t, store.Refresh("existing"))
 	require.Len(t, changes, 2)
 	assert.Equal(t, "existing", changes[1].RefreshID)
+}
+
+func TestStoreSaveDoesNotDuplicateParsedSubtableKeys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	initial := `[feeds.existing]
+url = "https://example.com/existing"
+format = "custom"
+page_size = 50
+update_period = "4h"
+
+[feeds.existing.clean]
+keep_last = 20
+
+[feeds.existing.custom_format]
+youtube_dl_format = "bestaudio"
+extension = "m4a"
+
+[feeds.existing.filters]
+min_duration = 60
+`
+	require.NoError(t, os.WriteFile(path, []byte(initial), 0600))
+
+	store := NewStore(path, "", nil, nil, nil)
+	_, err := store.Save("existing", Feed{
+		ID: "existing", URL: "https://example.com/existing", Enabled: true,
+		MediaType: "audio", AudioFormat: "m4a", AudioBitrate: "best",
+		PageSize: 100, KeepLast: 30, MinimumDuration: 600, UpdatePeriod: "4h",
+	})
+	require.NoError(t, err)
+
+	updated, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, 1, strings.Count(string(updated), "min_duration = 600"))
+	assert.Equal(t, 1, strings.Count(string(updated), "keep_last = 30"))
 }
 
 func TestStoreListAppliesDefaultsAndGlobalCleanup(t *testing.T) {
