@@ -85,7 +85,7 @@ func TestStoreNewFeedRunsImmediatelyAndManualRefreshQueuesExistingFeed(t *testin
 	assert.Equal(t, "existing", changes[1].RefreshID)
 }
 
-func TestStoreSaveDoesNotDuplicateParsedSubtableKeys(t *testing.T) {
+func TestStoreSaveDoesNotCorruptAdjacentFeedWhenReplacementGrows(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	initial := `[feeds.existing]
 url = "https://example.com/existing"
@@ -102,6 +102,13 @@ extension = "m4a"
 
 [feeds.existing.filters]
 min_duration = 60
+
+[feeds.next]
+url = "https://example.com/next"
+format = "custom"
+
+[feeds.next.filters]
+min_duration = 120
 `
 	require.NoError(t, os.WriteFile(path, []byte(initial), 0600))
 
@@ -117,6 +124,8 @@ min_duration = 60
 	require.NoError(t, err)
 	assert.Equal(t, 1, strings.Count(string(updated), "min_duration = 600"))
 	assert.Equal(t, 1, strings.Count(string(updated), "keep_last = 30"))
+	assert.Contains(t, string(updated), "https://example.com/next")
+	assert.Equal(t, 1, strings.Count(string(updated), "min_duration = 120"))
 }
 
 func TestStoreListAppliesDefaultsAndGlobalCleanup(t *testing.T) {

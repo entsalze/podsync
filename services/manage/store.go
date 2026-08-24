@@ -113,16 +113,8 @@ func (s *Store) Save(id string, input Feed) (Feed, error) {
 	feedTree, _ := feedsTree.Get(id).(*toml.Tree)
 	if feedTree == nil {
 		feedTree, _ = toml.TreeFromMap(map[string]interface{}{})
-	} else {
-		// Detach the feed from the parsed document before re-encoding it. Parsed
-		// subtrees retain source positions, which can make go-toml emit an
-		// existing nested key twice after it is updated and embedded in a new tree.
-		feedTree, err = toml.TreeFromMap(feedTree.ToMap())
-		if err != nil {
-			return Feed{}, fmt.Errorf("copy feed config: %w", err)
-		}
+		feedsTree.Set(id, feedTree)
 	}
-	feedsTree.Set(id, feedTree)
 
 	config := fromAPI(id, input)
 	setFeedTree(feedTree, config, input)
@@ -322,7 +314,11 @@ func replaceFeedBlock(original, encoded, id string) (string, error) {
 	originalLines := strings.Split(strings.ReplaceAll(original, "\r\n", "\n"), "\n")
 	start, end, exists := feedBlockBounds(originalLines, id, true)
 	if exists {
-		originalLines = append(append(originalLines[:start], replacement...), originalLines[end:]...)
+		updated := make([]string, 0, start+len(replacement)+len(originalLines)-end)
+		updated = append(updated, originalLines[:start]...)
+		updated = append(updated, replacement...)
+		updated = append(updated, originalLines[end:]...)
+		originalLines = updated
 	} else {
 		for len(originalLines) > 0 && originalLines[len(originalLines)-1] == "" {
 			originalLines = originalLines[:len(originalLines)-1]
