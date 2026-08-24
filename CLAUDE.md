@@ -43,9 +43,10 @@ Understanding how episodes flow through the system:
 - Episodes matching feed URL are identified by provider-specific parsing in `pkg/builder/`
 
 ### Download Phase
-- `fetchEpisodes()` iterates episodes with status `EpisodeNew` or `EpisodeError`
+- `fetchEpisodes()` considers new, retryable, and already downloaded episodes when calculating the retention window
 - Episodes are filtered by match rules (title, description, duration, age) in `services/update/matcher.go:27-72`
-- Only `page_size` episodes are queued per update cycle (default 50)
+- `page_size` controls how many episodes are queried from the provider per update (default 50)
+- When `clean.keep_last` is configured, only new or retryable episodes within the newest N matching episodes are queued, preventing downloads that cleanup would immediately remove
 - Downloads happen to temp directory first, then copied to storage to prevent incomplete files
 - On success: status set to `EpisodeDownloaded` with file size recorded
 - On failure: status set to `EpisodeError`, retry attempted next cycle

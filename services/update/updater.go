@@ -155,21 +155,25 @@ func (u *Manager) updateFeed(ctx context.Context, feedConfig *feed.Config) error
 
 func (u *Manager) fetchEpisodes(ctx context.Context, feedConfig *feed.Config) ([]*model.Episode, error) {
 	var (
-		feedID       = feedConfig.ID
-		downloadList []*model.Episode
-		pageSize     = feedConfig.PageSize
+		feedID   = feedConfig.ID
+		episodes []*model.Episode
 	)
 
-	log.WithField("page_size", pageSize).Info("fetching episodes for download")
+	limit := feedConfig.PageSize
+	if feedConfig.Clean != nil && feedConfig.Clean.KeepLast > 0 {
+		limit = feedConfig.Clean.KeepLast
+	}
 
-	// Build the list of files to download
+	log.WithFields(log.Fields{
+		"page_size":      feedConfig.PageSize,
+		"download_limit": limit,
+	}).Info("fetching episodes for download")
+
+	// Build the list of eligible episodes. Downloaded episodes are included so
+	// they occupy their place in the retention window before new downloads are
+	// queued.
 	err := u.db.WalkEpisodes(ctx, feedID, func(episode *model.Episode) error {
-		var (
-			logger = log.WithFields(log.Fields{"episode_id": episode.ID})
-		)
-		if episode.Status != model.EpisodeNew && episode.Status != model.EpisodeError {
-			// File already downloaded
-			logger.Infof("skipping due to already downloaded")
+		if episode.Status == model.EpisodeCleaned {
 			return nil
 		}
 
@@ -177,14 +181,7 @@ func (u *Manager) fetchEpisodes(ctx context.Context, feedConfig *feed.Config) ([
 			return nil
 		}
 
-		// Limit the number of episodes downloaded at once
-		pageSize--
-		if pageSize < 0 {
-			return nil
-		}
-
-		log.Debugf("adding %s (%q) to queue", episode.ID, episode.Title)
-		downloadList = append(downloadList, episode)
+		episodes = append(episodes, episode)
 		return nil
 	})
 
@@ -192,7 +189,29 @@ func (u *Manager) fetchEpisodes(ctx context.Context, feedConfig *feed.Config) ([
 		return nil, errors.Wrapf(err, "failed to build update list")
 	}
 
-	return downloadList, nil
+	return selectEpisodesForDownload(episodes, limit), nil
+}
+
+func selectEpisodesForDownload(episodes []*model.Episode, limit int) []*model.Episode {
+	sort.SliceStable(episodes, func(i, j int) bool {
+		return episodes[i].PubDate.After(episodes[j].PubDate)
+	})
+
+	if limit > 0 && len(episodes) > limit {
+		episodes = episodes[:limit]
+	}
+
+	downloadList := make([]*model.Episode, 0, len(episodes))
+	for _, episode := range episodes {
+		if episode.Status != model.EpisodeNew && episode.Status != model.EpisodeError {
+			continue
+		}
+
+		log.Debugf("adding %s (%q) to queue", episode.ID, episode.Title)
+		downloadList = append(downloadList, episode)
+	}
+
+	return downloadList
 }
 
 func (u *Manager) downloadEpisodes(ctx context.Context, feedConfig *feed.Config, downloadList []*model.Episode) error {

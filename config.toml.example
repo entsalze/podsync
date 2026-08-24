@@ -73,7 +73,8 @@ vimeo = [ # Multiple keys will be rotated.
   # URL address of a channel, group, user, or playlist.
   url = "https://www.youtube.com/channel/CHANNEL_NAME_TO_HOST"
 
-  # The number of episodes to query each update (keep in mind, that this might drain API token)
+  # The number of episodes to query each update (keep in mind, that this might drain API token).
+  # When clean.keep_last is set, only episodes within that newest retention window are downloaded.
   page_size = 50
 
   # How often query for updates, examples: "60m", "4h", "2h45m"
@@ -98,7 +99,7 @@ vimeo = [ # Multiple keys will be rotated.
   cron_schedule = "@every 12h"
 
   # Whether to cleanup old episodes for this specific feed.
-  # Keep last 10 episodes (order desc by PubDate)
+  # Keep last 10 episodes (order desc by PubDate) and limit downloads to that retention window.
   # This overrides the global cleanup policy if one is set.
   clean = { keep_last = 10 }
 
