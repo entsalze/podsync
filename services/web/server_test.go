@@ -9,14 +9,63 @@ import (
 	"testing"
 
 	"github.com/mxpv/podsync/pkg/fs"
+	"github.com/mxpv/podsync/services/manage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 type mockFileSystem struct{}
 
+type mockFeedManager struct {
+	feeds []manage.Feed
+	saved manage.Feed
+}
+
+func (m *mockFeedManager) List() ([]manage.Feed, error) { return m.feeds, nil }
+func (m *mockFeedManager) Save(id string, input manage.Feed) (manage.Feed, error) {
+	input.ID = id
+	m.saved = input
+	return input, nil
+}
+
 func (m *mockFileSystem) Open(name string) (http.File, error) {
 	return nil, http.ErrMissingFile
+}
+
+func TestManagementAPIDisabledByDefault(t *testing.T) {
+	srv := New(Config{}, &mockFileSystem{}, nil, &mockFeedManager{})
+	req := httptest.NewRequest(http.MethodGet, "/api/feeds?token=secret", nil)
+	rec := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestManagementAPIRequiresToken(t *testing.T) {
+	srv := New(Config{ManagementUIEnabled: true, ManagementToken: "secret"}, &mockFileSystem{}, nil, &mockFeedManager{})
+	for _, path := range []string{"/api/feeds", "/api/feeds?token=wrong"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		srv.Handler.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusForbidden, rec.Code)
+	}
+}
+
+func TestManagementAPIListsAndSavesFeeds(t *testing.T) {
+	manager := &mockFeedManager{feeds: []manage.Feed{{ID: "one", URL: "https://example.com", Enabled: true}}}
+	srv := New(Config{ManagementUIEnabled: true, ManagementToken: "secret"}, &mockFileSystem{}, nil, manager)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/feeds?token=secret", nil)
+	rec := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), `"id":"one"`)
+
+	body := strings.NewReader(`{"id":"one","url":"https://example.com","enabled":false,"media_type":"audio","audio_format":"m4a","audio_bitrate":"best","page_size":50,"keep_last":20,"minimum_duration":0,"update_period":"4h"}`)
+	req = httptest.NewRequest(http.MethodPut, "/api/feeds/one?token=secret", body)
+	rec = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.False(t, manager.saved.Enabled)
 }
 
 func TestDebugEndpointDisabledByDefault(t *testing.T) {

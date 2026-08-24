@@ -9,6 +9,8 @@ import (
 // Config is a configuration for a feed loaded from TOML
 type Config struct {
 	ID string `toml:"-"`
+	// Disabled keeps the feed configuration without scheduling updates or listing it in OPML.
+	Disabled bool `toml:"disabled"`
 	// URL is a full URL of the field
 	URL string `toml:"url"`
 	// PageSize is the number of pages to query from YouTube API.
@@ -24,6 +26,9 @@ type Config struct {
 	CronSchedule string `toml:"cron_schedule"`
 	// Quality to use for this feed
 	Quality model.Quality `toml:"quality"`
+	// AudioBitrate controls ffmpeg audio conversion quality, for example "192K".
+	// Empty or "best" keeps the best available source quality.
+	AudioBitrate string `toml:"audio_bitrate"`
 	// Maximum height of video
 	MaxHeight int `toml:"max_height"`
 	// Format to use for this feed

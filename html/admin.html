@@ -1,0 +1,654 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Podsync Management Preview</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --canvas: #f4f4f7;
+      --surface: #ffffff;
+      --surface-muted: #f8f8fa;
+      --text: #1d1d1f;
+      --muted: #6e6e73;
+      --faint: #98989d;
+      --line: #dedee3;
+      --line-strong: #c7c7cc;
+      --accent: #7446a6;
+      --accent-soft: #f0eafa;
+      --success: #257a4b;
+      --success-soft: #e8f5ed;
+      --danger: #b42318;
+      --danger-soft: #fef0ee;
+      --warning: #8a5a00;
+      --warning-soft: #fff5d8;
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --shadow: 0 12px 36px rgba(29, 29, 31, 0.09);
+      --space: 8px;
+    }
+
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--canvas);
+      color: var(--text);
+      font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    button, input, select { font: inherit; }
+    input, select { height: 42px; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 3px solid rgba(116, 70, 166, 0.22);
+      outline-offset: 1px;
+    }
+
+    .app-shell { min-height: 100vh; }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: calc(var(--space) * 2);
+      min-height: 64px;
+      padding: 0 clamp(16px, 4vw, 48px);
+      background: rgba(255, 255, 255, 0.94);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(16px);
+    }
+
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 720; font-size: 19px; }
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 32px;
+      height: 32px;
+      border: 1px solid var(--line-strong);
+      border-radius: 50%;
+      color: var(--accent);
+      font-size: 13px;
+      letter-spacing: -0.04em;
+    }
+
+    .preview-flag {
+      padding: 5px 8px;
+      border-radius: var(--radius-sm);
+      background: var(--warning-soft);
+      color: var(--warning);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .workspace {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 64px;
+    }
+
+    .page-heading {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+
+    .eyebrow {
+      margin: 0 0 6px;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 750;
+      letter-spacing: 0.11em;
+      text-transform: uppercase;
+    }
+
+    h1 { margin: 0; font-size: clamp(28px, 4vw, 42px); line-height: 1.05; letter-spacing: -0.035em; }
+    .lede { max-width: 620px; margin: 10px 0 0; color: var(--muted); text-wrap: pretty; }
+
+    .tabs {
+      display: inline-flex;
+      gap: 4px;
+      padding: 4px;
+      background: #e9e9ed;
+      border-radius: 9px;
+    }
+
+    .tab {
+      min-height: 36px;
+      padding: 6px 13px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      font-weight: 650;
+    }
+
+    .tab[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .search { position: relative; flex: 1; max-width: 420px; }
+    .search input, .field input, .field select {
+      width: 100%;
+      padding: 0 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    .field select {
+      appearance: none;
+      padding-right: 38px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%231d1d1f' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+    }
+
+    .btn {
+      min-height: 42px;
+      padding: 8px 14px;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: var(--text);
+      font-weight: 680;
+    }
+
+    .toolbar > .btn { height: 42px; padding-block: 0; }
+
+    .btn:hover { border-color: #9d9da3; background: var(--surface-muted); }
+    .btn-primary { border-color: var(--accent); background: var(--accent); color: white; }
+    .btn-primary:hover { border-color: #61358f; background: #61358f; }
+    .btn-danger { color: var(--danger); }
+    .btn:disabled { cursor: not-allowed; opacity: .48; }
+
+    .panel { overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); }
+
+    .feed-table { width: 100%; border-collapse: collapse; }
+    .feed-table th {
+      padding: 11px 16px;
+      background: var(--surface-muted);
+      color: var(--faint);
+      font-size: 11px;
+      letter-spacing: .08em;
+      text-align: left;
+      text-transform: uppercase;
+    }
+    .feed-table td { padding: 15px 16px; border-top: 1px solid var(--line); vertical-align: middle; }
+    .feed-table tbody tr { cursor: pointer; }
+    .feed-table tbody tr:hover { background: #fbf9fd; }
+    .feed-name { font-weight: 700; }
+    .feed-id { margin-top: 3px; color: var(--faint); font: 12px/1.3 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .meta { color: var(--muted); font-size: 13px; }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--success);
+      font-size: 13px;
+      font-weight: 650;
+    }
+    .status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+    .status.disabled { color: var(--faint); }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 380px;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .editor {
+      position: sticky;
+      top: 80px;
+      padding: 20px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow);
+    }
+
+    .editor-header { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+    .editor h2 { margin: 0; font-size: 20px; letter-spacing: -0.02em; }
+    .editor-subtitle { margin: 4px 0 0; color: var(--faint); font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; }
+
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 12px; }
+    .field {
+      display: grid;
+      grid-template-rows: max-content 42px max-content;
+      align-content: start;
+      gap: 6px;
+    }
+    .field.full { grid-column: 1 / -1; }
+    .field label { color: var(--muted); font-size: 12px; font-weight: 680; }
+    .hint { margin: 0; color: var(--faint); font-size: 11px; text-wrap: pretty; }
+
+    .format-note {
+      grid-column: 1 / -1;
+      padding: 10px 12px;
+      border: 1px solid #ead9b0;
+      border-radius: var(--radius-sm);
+      background: var(--warning-soft);
+      color: #6f4a00;
+      font-size: 12px;
+      text-wrap: pretty;
+    }
+
+    .switch-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      grid-column: 1 / -1;
+      padding: 11px 0;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .switch { position: relative; width: 44px; height: 24px; }
+    .switch input { position: absolute; opacity: 0; }
+    .switch span { position: absolute; inset: 0; border-radius: 99px; background: #c7c7cc; transition: background .16s ease; }
+    .switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: white; transition: transform .16s ease; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+    .switch input:checked + span { background: var(--accent); }
+    .switch input:checked + span::after { transform: translateX(20px); }
+
+    .editor-actions { display: flex; justify-content: space-between; gap: 10px; margin-top: 20px; }
+    .action-group { display: flex; gap: 8px; }
+
+    .toml-preview {
+      display: none;
+      grid-column: 1 / -1;
+      margin: 0;
+      padding: 12px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: #232225;
+      color: #f1edf5;
+      font: 11px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace;
+      white-space: pre-wrap;
+    }
+
+    .empty {
+      display: none;
+      padding: 56px 24px;
+      color: var(--muted);
+      text-align: center;
+    }
+    .empty strong { display: block; margin-bottom: 5px; color: var(--text); font-size: 17px; }
+
+    .toast {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      z-index: 30;
+      max-width: 360px;
+      padding: 12px 14px;
+      border: 1px solid #bedcc9;
+      border-radius: var(--radius-sm);
+      background: var(--success-soft);
+      color: #185c37;
+      box-shadow: var(--shadow);
+      opacity: 0;
+      transform: translateY(8px);
+      pointer-events: none;
+      transition: opacity .16s ease, transform .16s ease;
+    }
+    .toast.visible { opacity: 1; transform: translateY(0); }
+
+    .mobile-label { display: none; color: var(--faint); font-size: 11px; text-transform: uppercase; }
+
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      .editor { position: static; }
+    }
+
+    @media (max-width: 680px) {
+      .topbar { min-height: 56px; }
+      .preview-flag { display: none; }
+      .workspace { width: min(100% - 24px, 1180px); padding-top: 22px; }
+      .page-heading { display: block; }
+      .tabs { margin-top: 20px; }
+      .toolbar { align-items: stretch; flex-direction: column; }
+      .search { max-width: none; }
+      .feed-table thead { display: none; }
+      .feed-table, .feed-table tbody, .feed-table tr, .feed-table td { display: block; width: 100%; }
+      .feed-table tr { padding: 13px 14px; border-top: 1px solid var(--line); }
+      .feed-table tr:first-child { border-top: 0; }
+      .feed-table td { display: flex; justify-content: space-between; gap: 16px; padding: 5px 0; border: 0; }
+      .feed-table td:first-child { display: block; margin-bottom: 5px; }
+      .mobile-label { display: inline; }
+      .form-grid { grid-template-columns: 1fr; }
+      .field.full, .format-note, .switch-row, .toml-preview { grid-column: 1; }
+      .editor-actions { align-items: stretch; flex-direction: column-reverse; }
+      .action-group { display: grid; grid-template-columns: 1fr 1fr; }
+      .editor-actions > .btn { width: 100%; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">PS</span>Podsync</div>
+      <span class="preview-flag">Authenticated management</span>
+    </header>
+
+    <main class="workspace">
+      <section class="page-heading">
+        <div>
+          <p class="eyebrow">Library administration</p>
+          <h1>Manage feeds</h1>
+          <p class="lede">Review sources, tune download rules and control future media without touching existing files.</p>
+        </div>
+        <nav class="tabs" aria-label="Primary views">
+          <button class="tab" type="button" aria-selected="false" disabled>Episodes</button>
+          <button class="tab" type="button" aria-selected="true">Manage Feeds</button>
+        </nav>
+      </section>
+
+      <div class="toolbar">
+        <label class="search">
+          <span class="mobile-label">Search feeds</span>
+          <input id="feed-search" type="search" placeholder="Search by name, ID or source URL" autocomplete="off">
+        </label>
+        <button class="btn btn-primary" id="add-feed" type="button">Add feed</button>
+      </div>
+
+      <div class="layout">
+        <section class="panel" aria-label="Configured feeds">
+          <table class="feed-table">
+            <thead>
+              <tr><th>Feed</th><th>Status</th><th>Media</th><th>Retention</th><th>Schedule</th></tr>
+            </thead>
+            <tbody id="feed-rows"></tbody>
+          </table>
+          <div class="empty" id="empty-state"><strong>No matching feeds</strong>Try another search term.</div>
+        </section>
+
+        <aside class="editor" aria-label="Feed editor">
+          <div class="editor-header">
+            <div><h2 id="editor-title">Edit feed</h2><p class="editor-subtitle" id="editor-id">naran</p></div>
+            <span class="status" id="editor-status">Enabled</span>
+          </div>
+
+          <form id="feed-form" class="form-grid">
+            <div class="field full" id="feed-id-field" hidden>
+              <label for="feed-id">Feed ID</label>
+              <input id="feed-id" type="text" pattern="[A-Za-z0-9_-]+" autocomplete="off">
+              <p class="hint">Letters, numbers, underscores and hyphens only.</p>
+            </div>
+            <div class="field full">
+              <label for="feed-url">Source URL</label>
+              <input id="feed-url" type="url" required>
+            </div>
+
+            <div class="field">
+              <label for="media-type">Media type</label>
+              <select id="media-type"><option>Audio</option><option>Video</option></select>
+            </div>
+            <div class="field" id="audio-format-field">
+              <label for="audio-format">Audio format</label>
+              <select id="audio-format"><option value="m4a">M4A</option><option value="mp3">MP3</option><option value="opus">Opus</option></select>
+            </div>
+            <div class="field" id="quality-field">
+              <label for="quality">Bitrate</label>
+              <select id="quality"><option value="best">Best available</option><option value="320">320 kbps</option><option value="256">256 kbps</option><option value="192">192 kbps</option><option value="128">128 kbps</option><option value="96">96 kbps</option></select>
+            </div>
+            <div class="field" id="height-field" hidden>
+              <label for="max-height">Maximum height</label>
+              <select id="max-height"><option value="0">Original</option><option>2160</option><option>1440</option><option>1080</option><option>720</option><option>480</option></select>
+            </div>
+            <div class="field">
+              <label for="page-size">Items to inspect</label>
+              <input id="page-size" type="number" min="1" max="1000" required>
+              <p class="hint">Provider items checked each update.</p>
+            </div>
+            <div class="field">
+              <label for="keep-last">Media to retain</label>
+              <input id="keep-last" type="number" min="1" max="1000" required>
+              <p class="hint">Also caps downloads after filtering.</p>
+            </div>
+            <div class="field">
+              <label for="min-duration">Minimum duration</label>
+              <input id="min-duration" type="number" min="0" step="60">
+              <p class="hint">Seconds. Use 0 to disable.</p>
+            </div>
+            <div class="field">
+              <label for="update-period">Update period</label>
+              <input id="update-period" type="text" placeholder="4h" required>
+              <p class="hint">Examples: 30m, 4h, 1h30m.</p>
+            </div>
+
+            <div class="format-note">Format changes apply to future downloads only. Existing media will not be converted or removed.</div>
+
+            <div class="switch-row">
+              <div><strong>Feed enabled</strong><p class="hint">Disabled feeds remain in configuration and keep their files.</p></div>
+              <label class="switch"><input id="enabled" type="checkbox" checked aria-label="Feed enabled"><span></span></label>
+            </div>
+
+            <pre class="toml-preview" id="toml-preview"></pre>
+          </form>
+
+          <div class="editor-actions">
+            <button class="btn btn-danger" id="disable-feed" type="button">Disable feed</button>
+            <div class="action-group">
+              <button class="btn" id="preview-toml" type="button">Preview TOML</button>
+              <button class="btn btn-primary" form="feed-form" type="submit">Save changes</button>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    let feeds = [];
+
+    const elements = {
+      rows: document.getElementById('feed-rows'), search: document.getElementById('feed-search'), empty: document.getElementById('empty-state'),
+      form: document.getElementById('feed-form'), title: document.getElementById('editor-title'), editorId: document.getElementById('editor-id'), status: document.getElementById('editor-status'),
+      idField: document.getElementById('feed-id-field'), id: document.getElementById('feed-id'),
+      url: document.getElementById('feed-url'), media: document.getElementById('media-type'), audioFormat: document.getElementById('audio-format'), quality: document.getElementById('quality'),
+      pageSize: document.getElementById('page-size'), keepLast: document.getElementById('keep-last'), minDuration: document.getElementById('min-duration'), period: document.getElementById('update-period'), maxHeight: document.getElementById('max-height'),
+      enabled: document.getElementById('enabled'), audioField: document.getElementById('audio-format-field'), qualityField: document.getElementById('quality-field'), heightField: document.getElementById('height-field'),
+      preview: document.getElementById('toml-preview'), toast: document.getElementById('toast')
+    };
+
+    let selectedFeed = null;
+
+    function apiURL(path) {
+      const url = new URL(path, window.location.href);
+      const token = new URLSearchParams(window.location.search).get('token');
+      if (token) url.searchParams.set('token', token);
+      return url;
+    }
+
+    function escapeHTML(value) {
+      const node = document.createElement('span');
+      node.textContent = String(value);
+      return node.innerHTML;
+    }
+
+    async function api(path, options = {}) {
+      const response = await fetch(apiURL(path), {
+        ...options,
+        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Request failed with HTTP ${response.status}`);
+      return data;
+    }
+
+    function renderRows(query = '') {
+      const needle = query.trim().toLowerCase();
+      const filtered = feeds.filter(feed => `${feed.id} ${feed.url}`.toLowerCase().includes(needle));
+      elements.rows.innerHTML = filtered.map(feed => `
+        <tr data-feed-id="${escapeHTML(feed.id)}" tabindex="0">
+          <td><div class="feed-name">${escapeHTML(feed.id.replaceAll('_', ' '))}</div><div class="feed-id">${escapeHTML(feed.id)}</div></td>
+          <td><span class="mobile-label">Status</span><span class="status ${feed.enabled ? '' : 'disabled'}">${feed.enabled ? 'Enabled' : 'Disabled'}</span></td>
+          <td><span class="mobile-label">Media</span><span class="meta">${escapeHTML(feed.media_type === 'audio' ? `Audio · ${feed.audio_format.toUpperCase()}` : 'Video')}</span></td>
+          <td><span class="mobile-label">Retention</span><span class="meta">${feed.keep_last} items</span></td>
+          <td><span class="mobile-label">Schedule</span><span class="meta">Every ${escapeHTML(feed.update_period)}</span></td>
+        </tr>`).join('');
+      elements.empty.style.display = filtered.length ? 'none' : 'block';
+      elements.rows.querySelectorAll('tr').forEach(row => {
+        const select = () => loadFeed(feeds.find(feed => feed.id === row.dataset.feedId));
+        row.addEventListener('click', select);
+        row.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') select(); });
+      });
+    }
+
+    function loadFeed(feed) {
+      selectedFeed = feed;
+      elements.title.textContent = 'Edit feed';
+      elements.editorId.textContent = feed.id;
+      elements.idField.hidden = true;
+      elements.id.required = false;
+      elements.url.value = feed.url;
+      elements.media.value = feed.media_type === 'audio' ? 'Audio' : 'Video';
+      elements.audioFormat.value = feed.audio_format || 'm4a';
+      elements.quality.value = feed.audio_bitrate || 'best';
+      elements.maxHeight.value = String(feed.max_height || 0);
+      elements.pageSize.value = feed.page_size;
+      elements.keepLast.value = feed.keep_last;
+      elements.minDuration.value = feed.minimum_duration;
+      elements.period.value = feed.update_period;
+      elements.enabled.checked = feed.enabled;
+      elements.status.textContent = feed.enabled ? 'Enabled' : 'Disabled';
+      elements.status.className = `status ${feed.enabled ? '' : 'disabled'}`;
+      elements.preview.style.display = 'none';
+      updateFormatFields();
+    }
+
+    function updateFormatFields() {
+      const isAudio = elements.media.value === 'Audio';
+      elements.audioField.hidden = !isAudio;
+      elements.qualityField.hidden = !isAudio;
+      elements.heightField.hidden = isAudio;
+    }
+
+    function buildTomlPreview() {
+      const id = selectedFeed?.id || elements.id.value || 'new_feed';
+      const lines = [`[feeds.${id}]`, `url = "${elements.url.value}"`, `disabled = ${!elements.enabled.checked}`, `page_size = ${elements.pageSize.value}`, `update_period = "${elements.period.value}"`];
+      if (elements.media.value === 'Video') {
+        lines.push('format = "video"', `max_height = ${elements.maxHeight.value}`);
+      } else if (elements.audioFormat.value === 'mp3') {
+        lines.push('format = "audio"', `audio_bitrate = "${elements.quality.value}"`);
+      } else {
+        const presets = {
+          m4a: ['bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/bestaudio', 'm4a'],
+          opus: ['bestaudio[ext=webm][acodec^=opus]/bestaudio', 'opus']
+        };
+        const [selector, extension] = presets[elements.audioFormat.value];
+        lines.push('format = "custom"', `audio_bitrate = "${elements.quality.value}"`, `custom_format = { youtube_dl_format = "${selector}", extension = "${extension}" }`);
+      }
+      lines.push(`clean = { keep_last = ${elements.keepLast.value} }`, `filters = { min_duration = ${elements.minDuration.value || 0} }`);
+      return lines.join('\n');
+    }
+
+    function showToast(message) {
+      elements.toast.textContent = message;
+      elements.toast.classList.add('visible');
+      window.setTimeout(() => elements.toast.classList.remove('visible'), 2400);
+    }
+
+    elements.search.addEventListener('input', event => renderRows(event.target.value));
+    elements.media.addEventListener('change', updateFormatFields);
+    elements.audioFormat.addEventListener('change', updateFormatFields);
+    elements.enabled.addEventListener('change', () => {
+      elements.status.textContent = elements.enabled.checked ? 'Enabled' : 'Disabled';
+      elements.status.className = `status ${elements.enabled.checked ? '' : 'disabled'}`;
+    });
+    document.getElementById('preview-toml').addEventListener('click', () => {
+      elements.preview.textContent = buildTomlPreview();
+      elements.preview.style.display = 'block';
+    });
+    document.getElementById('disable-feed').addEventListener('click', () => {
+      if (!selectedFeed) return;
+      elements.enabled.checked = false;
+      elements.enabled.dispatchEvent(new Event('change'));
+      elements.form.requestSubmit();
+    });
+    document.getElementById('add-feed').addEventListener('click', () => {
+      selectedFeed = null;
+      elements.form.reset();
+      elements.title.textContent = 'Add feed';
+      elements.editorId.textContent = 'new_feed';
+      elements.idField.hidden = false;
+      elements.id.required = true;
+      elements.id.value = '';
+      elements.pageSize.value = 50;
+      elements.keepLast.value = 20;
+      elements.minDuration.value = 0;
+      elements.period.value = '4h';
+      elements.enabled.checked = true;
+      elements.preview.style.display = 'none';
+      updateFormatFields();
+      elements.id.focus();
+    });
+    elements.form.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (!elements.form.reportValidity()) return;
+      const id = selectedFeed?.id || elements.id.value;
+      const payload = {
+        id,
+        url: elements.url.value,
+        enabled: elements.enabled.checked,
+        media_type: elements.media.value.toLowerCase(),
+        audio_format: elements.audioFormat.value,
+        audio_bitrate: elements.quality.value,
+        max_height: Number(elements.maxHeight.value),
+        page_size: Number(elements.pageSize.value),
+        keep_last: Number(elements.keepLast.value),
+        minimum_duration: Number(elements.minDuration.value || 0),
+        update_period: elements.period.value
+      };
+      try {
+        const saved = await api(`/api/feeds/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) });
+        const index = feeds.findIndex(feed => feed.id === saved.id);
+        if (index === -1) feeds.push(saved); else feeds[index] = saved;
+        feeds.sort((a, b) => a.id.localeCompare(b.id));
+        renderRows(elements.search.value);
+        loadFeed(saved);
+        showToast(saved.enabled ? 'Feed saved and scheduled.' : 'Feed disabled. Existing media was retained.');
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
+
+    async function loadFeeds() {
+      try {
+        const data = await api('/api/feeds');
+        feeds = data.feeds;
+        renderRows();
+        if (feeds.length) loadFeed(feeds[0]);
+      } catch (error) {
+        showToast(error.message);
+      }
+    }
+
+    loadFeeds();
+  </script>
+</body>
+</html>

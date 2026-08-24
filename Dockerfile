@@ -25,6 +25,7 @@ RUN chmod 777 /usr/local/bin
 COPY --from=builder /usr/bin/yt-dlp /usr/local/bin/youtube-dl
 COPY --from=builder /build/bin/podsync /app/podsync
 COPY --from=builder /build/html/index.html /app/html/index.html
+COPY --from=builder /build/html/admin.html /app/html/admin.html
 
 ENTRYPOINT ["/app/podsync"]
 CMD ["--no-banner"]

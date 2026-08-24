@@ -291,9 +291,15 @@ func buildArgs(feedConfig *feed.Config, episode *model.Episode, outputFilePath s
 		}
 
 		args = append(args, "--extract-audio", "--audio-format", "mp3", "--format", format)
+		if feedConfig.AudioBitrate != "" && feedConfig.AudioBitrate != "best" {
+			args = append(args, "--audio-quality", feedConfig.AudioBitrate)
+		}
 
 	default:
 		args = append(args, "--audio-format", feedConfig.CustomFormat.Extension, "--format", feedConfig.CustomFormat.YouTubeDLFormat)
+		if feedConfig.AudioBitrate != "" && feedConfig.AudioBitrate != "best" {
+			args = append(args, "--extract-audio", "--audio-quality", feedConfig.AudioBitrate)
+		}
 	}
 
 	// Insert additional per-feed youtube-dl arguments

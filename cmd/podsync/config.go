@@ -103,6 +103,9 @@ func (c *Config) validate() error {
 			result = multierror.Append(result, errors.Errorf("Server handle path must be match %s or empty", model.PathRegex))
 		}
 	}
+	if c.Server.ManagementUIEnabled && c.Server.ManagementToken == "" {
+		result = multierror.Append(result, errors.New("server.management_token is required when management_ui is enabled"))
+	}
 
 	switch c.Storage.Type {
 	case "local":

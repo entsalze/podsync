@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/go-multierror"
@@ -35,6 +36,30 @@ type Manager struct {
 	fs         fs.Storage
 	feeds      map[string]*feed.Config
 	keys       map[model.Provider]feed.KeyProvider
+	feedsMu    sync.RWMutex
+}
+
+// SetFeed adds or replaces a feed used for runtime updates and OPML generation.
+func (u *Manager) SetFeed(config *feed.Config) {
+	u.feedsMu.Lock()
+	defer u.feedsMu.Unlock()
+	u.feeds[config.ID] = config
+}
+
+// RemoveFeed stops a feed from appearing in runtime updates and OPML generation.
+// It intentionally does not remove database records or downloaded media.
+func (u *Manager) RemoveFeed(id string) {
+	u.feedsMu.Lock()
+	defer u.feedsMu.Unlock()
+	delete(u.feeds, id)
+}
+
+// Feed returns the current runtime configuration for a feed.
+func (u *Manager) Feed(id string) (*feed.Config, bool) {
+	u.feedsMu.RLock()
+	defer u.feedsMu.RUnlock()
+	config, ok := u.feeds[id]
+	return config, ok
 }
 
 func NewUpdater(
@@ -372,7 +397,14 @@ func (u *Manager) buildXML(ctx context.Context, feedConfig *feed.Config) error {
 func (u *Manager) buildOPML(ctx context.Context) error {
 	// Build OPML with data received from builder
 	log.Debug("building podcast OPML")
-	opml, err := feed.BuildOPML(ctx, u.feeds, u.db, u.hostname)
+	u.feedsMu.RLock()
+	feeds := make(map[string]*feed.Config, len(u.feeds))
+	for id, config := range u.feeds {
+		feeds[id] = config
+	}
+	u.feedsMu.RUnlock()
+
+	opml, err := feed.BuildOPML(ctx, feeds, u.db, u.hostname)
 	if err != nil {
 		return err
 	}

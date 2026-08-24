@@ -1,16 +1,20 @@
 package web
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"expvar"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
 
 	"github.com/mxpv/podsync/pkg/db"
 	"github.com/mxpv/podsync/pkg/model"
+	"github.com/mxpv/podsync/services/manage"
 )
 
 type Server struct {
@@ -46,9 +50,18 @@ type Config struct {
 	NoIndex bool `toml:"no_index"`
 	// NoListing returns 404 for directory listings, only serving actual files (disabled by default)
 	NoListing bool `toml:"no_listing"`
+	// ManagementUIEnabled enables the authenticated feed management page and API.
+	ManagementUIEnabled bool `toml:"management_ui"`
+	// ManagementToken authenticates management page and API requests.
+	ManagementToken string `toml:"management_token"`
 }
 
-func New(cfg Config, storage http.FileSystem, database db.Storage) *Server {
+type FeedManager interface {
+	List() ([]manage.Feed, error)
+	Save(id string, input manage.Feed) (manage.Feed, error)
+}
+
+func New(cfg Config, storage http.FileSystem, database db.Storage, managers ...FeedManager) *Server {
 	port := cfg.Port
 	if port == 0 {
 		port = 8080
@@ -78,6 +91,23 @@ func New(cfg Config, storage http.FileSystem, database db.Storage) *Server {
 	// Add health check endpoint
 	mux.HandleFunc("/health", srv.healthCheckHandler)
 
+	if cfg.ManagementUIEnabled && len(managers) > 0 && managers[0] != nil {
+		manager := managers[0]
+		mux.HandleFunc("/manage", managementAuth(cfg.ManagementToken, func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+				return
+			}
+			http.ServeFile(w, r, "./html/admin.html")
+		}))
+		mux.HandleFunc("/api/feeds", managementAuth(cfg.ManagementToken, feedCollectionHandler(manager)))
+		mux.HandleFunc("/api/feeds/", managementAuth(cfg.ManagementToken, feedItemHandler(manager)))
+	} else {
+		mux.HandleFunc("/manage", http.NotFound)
+		mux.HandleFunc("/api/feeds", http.NotFound)
+		mux.HandleFunc("/api/feeds/", http.NotFound)
+	}
+
 	// Optionally enable debug endpoints (disabled by default for security)
 	if cfg.DebugEndpoints {
 		log.Info("debug endpoints enabled at /debug/vars")
@@ -92,6 +122,75 @@ func New(cfg Config, storage http.FileSystem, database db.Storage) *Server {
 	}
 
 	return &srv
+}
+
+func managementAuth(token string, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		provided := r.URL.Query().Get("token")
+		if provided == "" {
+			provided = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		}
+		if token == "" || subtle.ConstantTimeCompare([]byte(provided), []byte(token)) != 1 {
+			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			return
+		}
+		next(w, r)
+	}
+}
+
+func feedCollectionHandler(manager FeedManager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+		feeds, err := manager.List()
+		if err != nil {
+			writeManagementError(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeManagementJSON(w, http.StatusOK, map[string]interface{}{"feeds": feeds})
+	}
+}
+
+func feedItemHandler(manager FeedManager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+		id := strings.TrimPrefix(r.URL.Path, "/api/feeds/")
+		if id == "" || strings.Contains(id, "/") {
+			writeManagementError(w, http.StatusBadRequest, fmt.Errorf("invalid feed ID"))
+			return
+		}
+		defer r.Body.Close()
+		var input manage.Feed
+		decoder := json.NewDecoder(io.LimitReader(r.Body, 64<<10))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&input); err != nil {
+			writeManagementError(w, http.StatusBadRequest, fmt.Errorf("invalid request: %w", err))
+			return
+		}
+		updated, err := manager.Save(id, input)
+		if err != nil {
+			writeManagementError(w, http.StatusBadRequest, err)
+			return
+		}
+		writeManagementJSON(w, http.StatusOK, updated)
+	}
+}
+
+func writeManagementJSON(w http.ResponseWriter, status int, value interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(value); err != nil {
+		log.WithError(err).Error("failed to encode management response")
+	}
+}
+
+func writeManagementError(w http.ResponseWriter, status int, err error) {
+	writeManagementJSON(w, status, map[string]string{"error": err.Error()})
 }
 
 type HealthStatus struct {

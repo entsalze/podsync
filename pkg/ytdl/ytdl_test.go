@@ -15,12 +15,22 @@ func TestBuildArgs(t *testing.T) {
 		format       model.Format
 		customFormat feed.CustomFormat
 		quality      model.Quality
+		audioBitrate string
 		maxHeight    int
 		output       string
 		videoURL     string
 		ytdlArgs     []string
 		expect       []string
 	}{
+		{
+			name:         "Audio with explicit bitrate",
+			format:       model.FormatAudio,
+			quality:      model.QualityHigh,
+			audioBitrate: "192K",
+			output:       "/tmp/1",
+			videoURL:     "http://url",
+			expect:       []string{"--extract-audio", "--audio-format", "mp3", "--format", "bestaudio", "--audio-quality", "192K", "--output", "/tmp/1", "http://url"},
+		},
 		{
 			name:     "Audio unknown quality",
 			format:   model.FormatAudio,
@@ -118,6 +128,7 @@ func TestBuildArgs(t *testing.T) {
 			result := buildArgs(&feed.Config{
 				Format:        tst.format,
 				Quality:       tst.quality,
+				AudioBitrate:  tst.audioBitrate,
 				CustomFormat:  tst.customFormat,
 				MaxHeight:     tst.maxHeight,
 				YouTubeDLArgs: tst.ytdlArgs,

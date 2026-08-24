@@ -12,6 +12,7 @@ import (
 	"github.com/jessevdk/go-flags"
 	"github.com/mxpv/podsync/pkg/feed"
 	"github.com/mxpv/podsync/pkg/model"
+	"github.com/mxpv/podsync/services/manage"
 	"github.com/mxpv/podsync/services/migrate"
 	"github.com/mxpv/podsync/services/update"
 	"github.com/mxpv/podsync/services/web"
@@ -183,6 +184,9 @@ func main() {
 	// In Headless mode, do one round of feed updates and quit
 	if opts.Headless {
 		for _, _feed := range cfg.Feeds {
+			if _feed.Disabled {
+				continue
+			}
 			if err := manager.Update(ctx, _feed); err != nil {
 				log.WithError(err).Errorf("failed to update feed: %s", _feed.URL)
 			}
@@ -190,9 +194,11 @@ func main() {
 		return
 	}
 
-	// Queue of feeds to update
-	updates := make(chan *feed.Config, 16)
+	// Queues for feed updates and live management changes.
+	updates := make(chan string, 16)
+	feedChanges := make(chan manage.Change, 16)
 	defer close(updates)
+	defer close(feedChanges)
 
 	group, ctx := errgroup.WithContext(ctx)
 	defer func() {
@@ -210,11 +216,15 @@ func main() {
 	group.Go(func() error {
 		for {
 			select {
-			case _feed := <-updates:
+			case feedID := <-updates:
+				_feed, ok := manager.Feed(feedID)
+				if !ok || _feed.Disabled {
+					continue
+				}
 				if err := manager.Update(ctx, _feed); err != nil {
 					log.WithError(err).Errorf("failed to update feed: %s", _feed.URL)
 				} else {
-					log.Infof("next update of %s: %s", _feed.ID, c.Entry(m[_feed.ID]).Next)
+					log.Infof("successfully completed scheduled update of %s", _feed.ID)
 				}
 			case <-ctx.Done():
 				return ctx.Err()
@@ -224,9 +234,17 @@ func main() {
 
 	// Run cron scheduler
 	group.Go(func() error {
-		var cronID cron.EntryID
-
-		for _, _feed := range cfg.Feeds {
+		scheduleFeed := func(_feed *feed.Config, initial bool) {
+			if oldID, ok := m[_feed.ID]; ok {
+				c.Remove(oldID)
+				delete(m, _feed.ID)
+			}
+			if _feed.Disabled {
+				manager.RemoveFeed(_feed.ID)
+				log.Infof("feed %s disabled; existing media retained", _feed.ID)
+				return
+			}
+			manager.SetFeed(_feed)
 			// Track if this feed has an explicit cron schedule
 			hasExplicitCronSchedule := _feed.CronSchedule != ""
 
@@ -234,11 +252,13 @@ func main() {
 				_feed.CronSchedule = fmt.Sprintf("@every %s", _feed.UpdatePeriod.String())
 			}
 			cronFeed := _feed
-			if cronID, err = c.AddFunc(cronFeed.CronSchedule, func() {
+			cronID, addErr := c.AddFunc(cronFeed.CronSchedule, func() {
 				log.Debugf("adding %q to update queue", cronFeed.ID)
-				updates <- cronFeed
-			}); err != nil {
-				log.WithError(err).Fatalf("can't create cron task for feed: %s", cronFeed.ID)
+				updates <- cronFeed.ID
+			})
+			if addErr != nil {
+				log.WithError(addErr).Errorf("can't create cron task for feed: %s", cronFeed.ID)
+				return
 			}
 
 			m[cronFeed.ID] = cronID
@@ -246,20 +266,26 @@ func main() {
 
 			// Only perform initial update if no explicit cron schedule is configured
 			// This prevents unwanted updates when using fixed schedules in Docker deployments
-			if !hasExplicitCronSchedule {
-				updates <- cronFeed
+			if initial && !hasExplicitCronSchedule {
+				updates <- cronFeed.ID
 			}
+		}
+
+		for _, _feed := range cfg.Feeds {
+			scheduleFeed(_feed, true)
 		}
 
 		c.Start()
 
 		for {
-			<-ctx.Done()
-
-			log.Info("shutting down cron")
-			c.Stop()
-
-			return ctx.Err()
+			select {
+			case change := <-feedChanges:
+				scheduleFeed(change.Feed, false)
+			case <-ctx.Done():
+				log.Info("shutting down cron")
+				c.Stop()
+				return ctx.Err()
+			}
 		}
 	})
 
@@ -268,7 +294,10 @@ func main() {
 	}
 
 	// Run web server
-	srv := web.New(cfg.Server, storage, database)
+	managementStore := manage.NewStore(opts.ConfigPath, func(change manage.Change) {
+		feedChanges <- change
+	})
+	srv := web.New(cfg.Server, storage, database, managementStore)
 
 	group.Go(func() error {
 		log.Infof("running listener at %s", srv.Addr)
