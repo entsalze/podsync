@@ -111,7 +111,7 @@
     }
 
     .search { position: relative; flex: 1; max-width: 420px; }
-    .search input, .sort-control select, .field input, .field select {
+    .search input, .field input, .field select {
       width: 100%;
       padding: 0 12px;
       border: 1px solid var(--line-strong);
@@ -120,10 +120,7 @@
       color: var(--text);
     }
 
-    .sort-control { width: 190px; }
-    .sort-control select { height: 42px; }
-
-    .sort-control select, .field select {
+    .field select {
       appearance: none;
       padding-right: 38px;
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%231d1d1f' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
@@ -148,6 +145,7 @@
     .btn-primary:hover { border-color: #61358f; background: #61358f; }
     .btn-danger { color: var(--danger); }
     .btn:disabled { cursor: not-allowed; opacity: .48; }
+    .btn[aria-expanded="true"] { border-color: #cbb6df; background: var(--accent-soft); color: var(--accent); }
 
     .panel { overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); }
 
@@ -161,10 +159,33 @@
       text-align: left;
       text-transform: uppercase;
     }
+    .sort-heading {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      font-weight: inherit;
+      letter-spacing: inherit;
+      text-transform: inherit;
+    }
+    .sort-heading:hover { color: var(--accent); }
+    .sort-indicator { min-width: 9px; color: var(--accent); }
     .feed-table td { padding: 15px 16px; border-top: 1px solid var(--line); vertical-align: middle; }
     .feed-table tbody tr { cursor: pointer; }
     .feed-table tbody tr:hover { background: #fbf9fd; }
     .feed-name { font-weight: 700; }
+    .feed-name-copy {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      text-align: left;
+    }
+    .feed-name-copy:hover { color: var(--accent); text-decoration: underline; }
     .feed-title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
     .feed-row-action {
       padding: 2px 6px;
@@ -178,6 +199,7 @@
     .feed-row-action:hover { border-color: var(--accent); color: var(--accent); }
     .feed-row-action:disabled { cursor: not-allowed; opacity: .45; }
     .feed-id { margin-top: 3px; color: var(--faint); font: 12px/1.3 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .feed-media { margin-top: 4px; color: var(--muted); font-size: 12px; }
     .meta { color: var(--muted); font-size: 13px; }
 
     .status {
@@ -193,10 +215,11 @@
 
     .layout {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 380px;
+      grid-template-columns: minmax(0, 1fr);
       gap: 16px;
       align-items: start;
     }
+    .layout.editor-open { grid-template-columns: minmax(0, 1fr) 380px; }
 
     .editor {
       position: sticky;
@@ -209,6 +232,21 @@
     }
 
     .editor-header { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+    .editor-header-actions { display: flex; align-items: flex-start; gap: 10px; }
+    .close-editor {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 19px;
+      line-height: 1;
+    }
+    .close-editor:hover { border-color: var(--line-strong); color: var(--text); }
     .editor h2 { margin: 0; font-size: 20px; letter-spacing: -0.02em; }
     .editor-subtitle { margin: 4px 0 0; color: var(--faint); font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; }
 
@@ -263,7 +301,7 @@
     .switch input:checked + span { background: var(--accent); }
     .switch input:checked + span::after { transform: translateX(20px); }
 
-    .editor-actions { display: grid; grid-template-columns: repeat(4, max-content); justify-content: end; gap: 8px; margin-top: 20px; }
+    .editor-actions { display: grid; grid-template-columns: repeat(4, max-content); justify-content: center; gap: 8px; margin-top: 20px; }
     .editor-actions .btn { min-height: 38px; padding: 7px 12px; }
 
     .toml-preview {
@@ -310,7 +348,7 @@
     .mobile-label { display: none; color: var(--faint); font-size: 11px; text-transform: uppercase; }
 
     @media (max-width: 900px) {
-      .layout { grid-template-columns: 1fr; }
+      .layout, .layout.editor-open { grid-template-columns: 1fr; }
       .editor { position: static; }
     }
 
@@ -321,10 +359,11 @@
       .page-heading { display: block; }
       .toolbar { align-items: stretch; flex-direction: column; }
       .search { max-width: none; }
-      .sort-control { width: 100%; }
-      .feed-table thead { display: none; }
+      .feed-table thead { display: block; overflow-x: auto; }
       .feed-table, .feed-table tbody, .feed-table tr, .feed-table td { display: block; width: 100%; }
       .feed-table tr { padding: 13px 14px; border-top: 1px solid var(--line); }
+      .feed-table thead tr { display: flex; width: max-content; padding: 0; border-top: 0; }
+      .feed-table th { flex: none; padding: 10px 12px; white-space: nowrap; }
       .feed-table tr:first-child { border-top: 0; }
       .feed-table td { display: flex; justify-content: space-between; gap: 16px; padding: 5px 0; border: 0; }
       .feed-table td:first-child { display: block; margin-bottom: 5px; }
@@ -361,36 +400,33 @@
           <span class="mobile-label">Search feeds</span>
           <input id="feed-search" type="search" placeholder="Search by name, ID or source URL" autocomplete="off">
         </label>
-        <label class="sort-control">
-          <span class="mobile-label">Sort feeds</span>
-          <select id="feed-sort" aria-label="Sort feeds">
-            <option value="name-asc">Name: A–Z</option>
-            <option value="name-desc">Name: Z–A</option>
-            <option value="storage-desc">Storage: largest</option>
-            <option value="storage-asc">Storage: smallest</option>
-            <option value="retention-desc">Retention: most</option>
-            <option value="retention-asc">Retention: least</option>
-            <option value="enabled-first">Status: enabled first</option>
-          </select>
-        </label>
         <button class="btn btn-primary" id="add-feed" type="button">Add feed</button>
       </div>
 
-      <div class="layout">
+      <div class="layout" id="feed-layout">
         <section class="panel" aria-label="Configured feeds">
           <table class="feed-table">
             <thead>
-              <tr><th>Feed</th><th>Status</th><th>Media</th><th>Storage</th><th>Retention</th><th>Schedule</th></tr>
+              <tr>
+                <th data-sort-key="name" aria-sort="ascending"><button class="sort-heading" type="button">Feed <span class="sort-indicator">↑</span></button></th>
+                <th data-sort-key="status"><button class="sort-heading" type="button">Status <span class="sort-indicator"></span></button></th>
+                <th data-sort-key="storage"><button class="sort-heading" type="button">Storage <span class="sort-indicator"></span></button></th>
+                <th data-sort-key="retention"><button class="sort-heading" type="button">Retention <span class="sort-indicator"></span></button></th>
+                <th data-sort-key="schedule"><button class="sort-heading" type="button">Schedule <span class="sort-indicator"></span></button></th>
+              </tr>
             </thead>
             <tbody id="feed-rows"></tbody>
           </table>
           <div class="empty" id="empty-state"><strong>No matching feeds</strong>Try another search term.</div>
         </section>
 
-        <aside class="editor" aria-label="Feed editor">
+        <aside class="editor" id="feed-editor" aria-label="Feed editor" hidden>
           <div class="editor-header">
             <div><h2 id="editor-title">Edit feed</h2><p class="editor-subtitle" id="editor-id">naran</p></div>
-            <span class="status" id="editor-status">Enabled</span>
+            <div class="editor-header-actions">
+              <span class="status" id="editor-status">Enabled</span>
+              <button class="close-editor" id="close-editor" type="button" aria-label="Close editor">×</button>
+            </div>
           </div>
 
           <form id="feed-form" class="form-grid">
@@ -434,8 +470,8 @@
             </div>
             <div class="field" data-advanced>
               <label for="min-duration">Minimum duration</label>
-              <input id="min-duration" type="number" min="0" step="60">
-              <p class="hint">Seconds. Use 0 to disable.</p>
+              <input id="min-duration" type="number" min="0" step="1">
+              <p class="hint">Minutes. Use 0 to disable.</p>
             </div>
             <div class="field" data-advanced>
               <label for="update-period">Update period</label>
@@ -454,9 +490,9 @@
           </form>
 
           <div class="editor-actions">
-            <button class="btn" id="disable-feed" type="button">Disable</button>
             <button class="btn btn-danger" id="delete-feed" type="button">Delete</button>
-            <button class="btn" id="preview-toml" type="button">Preview</button>
+            <button class="btn" id="disable-feed" type="button">Disable</button>
+            <button class="btn" id="preview-toml" type="button" aria-expanded="false">Preview</button>
             <button class="btn btn-primary" form="feed-form" type="submit">Save</button>
           </div>
         </aside>
@@ -470,7 +506,7 @@
     let feeds = [];
 
     const elements = {
-      rows: document.getElementById('feed-rows'), search: document.getElementById('feed-search'), sort: document.getElementById('feed-sort'), empty: document.getElementById('empty-state'),
+      rows: document.getElementById('feed-rows'), search: document.getElementById('feed-search'), empty: document.getElementById('empty-state'),
       form: document.getElementById('feed-form'), title: document.getElementById('editor-title'), editorId: document.getElementById('editor-id'), status: document.getElementById('editor-status'),
       idField: document.getElementById('feed-id-field'), id: document.getElementById('feed-id'),
       url: document.getElementById('feed-url'), media: document.getElementById('media-type'), audioFormat: document.getElementById('audio-format'), quality: document.getElementById('quality'),
@@ -479,11 +515,14 @@
       preview: document.getElementById('toml-preview'), toast: document.getElementById('toast'),
       advancedToggle: document.getElementById('toggle-advanced'),
       advancedFields: document.querySelectorAll('[data-advanced]'), disable: document.getElementById('disable-feed'),
-      deleteFeed: document.getElementById('delete-feed')
+      deleteFeed: document.getElementById('delete-feed'), layout: document.getElementById('feed-layout'),
+      editor: document.getElementById('feed-editor'), closeEditor: document.getElementById('close-editor'),
+      previewButton: document.getElementById('preview-toml')
     };
 
     let selectedFeed = null;
     let advancedVisible = true;
+    const sortState = { key: 'name', direction: 'asc' };
 
     function apiURL(path) {
       const url = new URL(path, window.location.href);
@@ -506,6 +545,28 @@
       return `${value.toFixed(value >= 10 || index === 0 ? 0 : 1)} ${units[index]}`;
     }
 
+    function durationMilliseconds(value) {
+      const units = { h: 3600000, m: 60000, s: 1000, ms: 1 };
+      return [...String(value).matchAll(/([\d.]+)(ms|h|m|s)/g)]
+        .reduce((total, match) => total + (Number(match[1]) * units[match[2]]), 0);
+    }
+
+    function formatUpdatePeriod(value) {
+      const totalMinutes = Math.max(1, Math.round(durationMilliseconds(value) / 60000));
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      if (!hours) return `${minutes}m`;
+      return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+    }
+
+    function updateSortHeadings() {
+      document.querySelectorAll('[data-sort-key]').forEach(heading => {
+        const active = heading.dataset.sortKey === sortState.key;
+        heading.setAttribute('aria-sort', active ? (sortState.direction === 'asc' ? 'ascending' : 'descending') : 'none');
+        heading.querySelector('.sort-indicator').textContent = active ? (sortState.direction === 'asc' ? '↑' : '↓') : '';
+      });
+    }
+
     function setAdvancedVisibility(visible) {
       advancedVisible = visible;
       elements.advancedToggle.hidden = selectedFeed !== null;
@@ -513,6 +574,20 @@
       elements.advancedToggle.setAttribute('aria-expanded', String(visible));
       elements.advancedFields.forEach(field => { field.hidden = !visible; });
       updateFormatFields();
+    }
+
+    function showEditor() {
+      elements.editor.hidden = false;
+      elements.layout.classList.add('editor-open');
+      if (window.matchMedia('(max-width: 900px)').matches) {
+        window.requestAnimationFrame(() => elements.editor.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+      }
+    }
+
+    function closeEditor() {
+      selectedFeed = null;
+      elements.editor.hidden = true;
+      elements.layout.classList.remove('editor-open');
     }
 
     async function api(path, options = {}) {
@@ -529,24 +604,23 @@
       const needle = query.trim().toLowerCase();
       const filtered = feeds.filter(feed => `${feed.id} ${feed.url}`.toLowerCase().includes(needle));
       const byName = (a, b) => a.id.localeCompare(b.id, undefined, { sensitivity: 'base' });
-      const sorters = {
-        'name-asc': byName,
-        'name-desc': (a, b) => byName(b, a),
-        'storage-desc': (a, b) => (b.disk_usage - a.disk_usage) || byName(a, b),
-        'storage-asc': (a, b) => (a.disk_usage - b.disk_usage) || byName(a, b),
-        'retention-desc': (a, b) => (b.keep_last - a.keep_last) || byName(a, b),
-        'retention-asc': (a, b) => (a.keep_last - b.keep_last) || byName(a, b),
-        'enabled-first': (a, b) => (Number(b.enabled) - Number(a.enabled)) || byName(a, b)
+      const comparators = {
+        name: byName,
+        status: (a, b) => (Number(!a.enabled) - Number(!b.enabled)) || byName(a, b),
+        storage: (a, b) => (a.disk_usage - b.disk_usage) || byName(a, b),
+        retention: (a, b) => (a.keep_last - b.keep_last) || byName(a, b),
+        schedule: (a, b) => (durationMilliseconds(a.update_period) - durationMilliseconds(b.update_period)) || byName(a, b)
       };
-      filtered.sort(sorters[elements.sort.value] || byName);
+      const comparator = comparators[sortState.key] || byName;
+      filtered.sort((a, b) => sortState.direction === 'asc' ? comparator(a, b) : comparator(b, a));
+      updateSortHeadings();
       elements.rows.innerHTML = filtered.map(feed => `
         <tr data-feed-id="${escapeHTML(feed.id)}" tabindex="0">
-          <td><div class="feed-title-row"><div class="feed-name">${escapeHTML(feed.id.replaceAll('_', ' '))}</div><button class="feed-row-action" type="button" data-copy-feed="${escapeHTML(feed.id)}">Copy link</button><button class="feed-row-action" type="button" data-refresh-feed="${escapeHTML(feed.id)}" ${feed.enabled ? '' : 'disabled'}>Refresh now</button></div><div class="feed-id">${escapeHTML(feed.id)}</div></td>
+          <td><div class="feed-title-row"><button class="feed-name feed-name-copy" type="button" data-copy-feed="${escapeHTML(feed.id)}" title="Copy subscription link">${escapeHTML(feed.id.replaceAll('_', ' '))}</button><button class="feed-row-action" type="button" data-refresh-feed="${escapeHTML(feed.id)}" ${feed.enabled ? '' : 'disabled'}>Refresh now</button></div><div class="feed-id">${escapeHTML(feed.id)}</div><div class="feed-media">${escapeHTML(feed.media_type === 'audio' ? `Audio · ${feed.audio_format.toUpperCase()}` : 'Video')}</div></td>
           <td><span class="mobile-label">Status</span><span class="status ${feed.enabled ? '' : 'disabled'}">${feed.enabled ? 'Enabled' : 'Disabled'}</span></td>
-          <td><span class="mobile-label">Media</span><span class="meta">${escapeHTML(feed.media_type === 'audio' ? `Audio · ${feed.audio_format.toUpperCase()}` : 'Video')}</span></td>
           <td><span class="mobile-label">Storage</span><span class="meta">${formatBytes(feed.disk_usage)}</span></td>
           <td><span class="mobile-label">Retention</span><span class="meta">${feed.keep_last} items</span></td>
-          <td><span class="mobile-label">Schedule</span><span class="meta">Every ${escapeHTML(feed.update_period)}</span></td>
+          <td><span class="mobile-label">Schedule</span><span class="meta">Every ${formatUpdatePeriod(feed.update_period)}</span></td>
         </tr>`).join('');
       elements.empty.style.display = filtered.length ? 'none' : 'block';
       elements.rows.querySelectorAll('tr').forEach(row => {
@@ -581,6 +655,7 @@
 
     function loadFeed(feed) {
       selectedFeed = feed;
+      showEditor();
       elements.title.textContent = 'Edit feed';
       elements.editorId.textContent = feed.id;
       elements.idField.hidden = true;
@@ -592,12 +667,13 @@
       elements.maxHeight.value = String(feed.max_height || 0);
       elements.pageSize.value = feed.page_size;
       elements.keepLast.value = feed.keep_last;
-      elements.minDuration.value = feed.minimum_duration;
+      elements.minDuration.value = feed.minimum_duration / 60;
       elements.period.value = feed.update_period;
       elements.enabled.checked = feed.enabled;
       elements.status.textContent = feed.enabled ? 'Enabled' : 'Disabled';
       elements.status.className = `status ${feed.enabled ? '' : 'disabled'}`;
       elements.preview.style.display = 'none';
+      elements.previewButton.setAttribute('aria-expanded', 'false');
       elements.disable.hidden = false;
       elements.deleteFeed.hidden = false;
       setAdvancedVisibility(true);
@@ -625,7 +701,7 @@
         const [selector, extension] = presets[elements.audioFormat.value];
         lines.push('format = "custom"', `audio_bitrate = "${elements.quality.value}"`, `custom_format = { youtube_dl_format = "${selector}", extension = "${extension}" }`);
       }
-      lines.push(`clean = { keep_last = ${elements.keepLast.value} }`, `filters = { min_duration = ${elements.minDuration.value || 0} }`);
+      lines.push(`clean = { keep_last = ${elements.keepLast.value} }`, `filters = { min_duration = ${Number(elements.minDuration.value || 0) * 60} }`);
       return lines.join('\n');
     }
 
@@ -636,7 +712,19 @@
     }
 
     elements.search.addEventListener('input', event => renderRows(event.target.value));
-    elements.sort.addEventListener('change', () => renderRows(elements.search.value));
+    elements.closeEditor.addEventListener('click', closeEditor);
+    document.querySelectorAll('[data-sort-key]').forEach(heading => {
+      heading.querySelector('button').addEventListener('click', () => {
+        const key = heading.dataset.sortKey;
+        if (sortState.key === key) {
+          sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+          sortState.key = key;
+          sortState.direction = ['storage', 'retention'].includes(key) ? 'desc' : 'asc';
+        }
+        renderRows(elements.search.value);
+      });
+    });
     elements.advancedToggle.addEventListener('click', () => setAdvancedVisibility(!advancedVisible));
     elements.url.addEventListener('input', () => {
       if (selectedFeed) return;
@@ -649,9 +737,11 @@
       elements.status.textContent = elements.enabled.checked ? 'Enabled' : 'Disabled';
       elements.status.className = `status ${elements.enabled.checked ? '' : 'disabled'}`;
     });
-    document.getElementById('preview-toml').addEventListener('click', () => {
-      elements.preview.textContent = buildTomlPreview();
-      elements.preview.style.display = 'block';
+    elements.previewButton.addEventListener('click', () => {
+      const opening = elements.preview.style.display !== 'block';
+      if (opening) elements.preview.textContent = buildTomlPreview();
+      elements.preview.style.display = opening ? 'block' : 'none';
+      elements.previewButton.setAttribute('aria-expanded', String(opening));
     });
     document.getElementById('disable-feed').addEventListener('click', () => {
       if (!selectedFeed) return;
@@ -667,7 +757,7 @@
         await api(`/api/feeds/${encodeURIComponent(id)}`, { method: 'DELETE' });
         feeds = feeds.filter(feed => feed.id !== id);
         renderRows(elements.search.value);
-        if (feeds.length) loadFeed(feeds[0]); else document.getElementById('add-feed').click();
+        closeEditor();
         showToast(`${id} and its local media were deleted.`);
       } catch (error) {
         showToast(error.message);
@@ -675,6 +765,7 @@
     });
     document.getElementById('add-feed').addEventListener('click', () => {
       selectedFeed = null;
+      showEditor();
       elements.form.reset();
       elements.title.textContent = 'Add feed';
       elements.editorId.textContent = 'new_feed';
@@ -687,10 +778,11 @@
       elements.maxHeight.value = 0;
       elements.pageSize.value = 100;
       elements.keepLast.value = 20;
-      elements.minDuration.value = 600;
+      elements.minDuration.value = 10;
       elements.period.value = '4h';
       elements.enabled.checked = true;
       elements.preview.style.display = 'none';
+      elements.previewButton.setAttribute('aria-expanded', 'false');
       elements.disable.hidden = true;
       elements.deleteFeed.hidden = true;
       setAdvancedVisibility(false);
@@ -721,7 +813,7 @@
         max_height: Number(elements.maxHeight.value),
         page_size: Number(elements.pageSize.value),
         keep_last: Number(elements.keepLast.value),
-        minimum_duration: Number(elements.minDuration.value || 0),
+        minimum_duration: Number(elements.minDuration.value || 0) * 60,
         update_period: elements.period.value
         };
         const saved = await api(`/api/feeds/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) });
@@ -741,7 +833,6 @@
         const data = await api('/api/feeds');
         feeds = data.feeds;
         renderRows();
-        if (feeds.length) loadFeed(feeds[0]);
       } catch (error) {
         showToast(error.message);
       }
