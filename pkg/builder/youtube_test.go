@@ -2,7 +2,9 @@ package builder
 
 import (
 	"context"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -12,102 +14,35 @@ import (
 	"github.com/mxpv/podsync/pkg/model"
 )
 
-// MockTransport implements http.RoundTripper for testing
-type MockTransport struct {
-	responses map[string]*http.Response
+type handleTransport struct {
+	request *http.Request
 }
 
-func (m *MockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	url := req.URL.String()
-	if resp, exists := m.responses[url]; exists {
-		return resp, nil
-	}
+func (transport *handleTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	transport.request = request
 	return &http.Response{
-		StatusCode: 404,
-		Body:       http.NoBody,
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(`{
+			"items": [{"id": "UCGvEFYE8RlYcz1XD26b_4Wg"}]
+		}`)),
 	}, nil
 }
 
-func TestResolveHandle(t *testing.T) {
-	tests := []struct {
-		name     string
-		handle   string
-		mockResp string
-		expected string
-		wantErr  bool
-	}{
-		{
-			name:   "valid handle",
-			handle: "testhandle",
-			mockResp: `{
-				"items": [
-					{
-						"snippet": {
-							"channelId": "UC_test_channel_id_123"
-						}
-					}
-				]
-			}`,
-			expected: "UC_test_channel_id_123",
-			wantErr:  false,
-		},
-		{
-			name:     "handle not found",
-			handle:   "nonexistent",
-			mockResp: `{"items": []}`,
-			expected: "",
-			wantErr:  true,
-		},
-		{
-			name:   "empty channel ID",
-			handle: "badhandle",
-			mockResp: `{
-				"items": [
-					{
-						"snippet": {
-							"channelId": ""
-						}
-					}
-				]
-			}`,
-			expected: "",
-			wantErr:  true,
-		},
-	}
+func TestListChannelsResolvesHandleExactly(t *testing.T) {
+	transport := &handleTransport{}
+	client := &http.Client{Transport: transport}
+	service, err := youtube.NewService(context.Background(), option.WithHTTPClient(client))
+	require.NoError(t, err)
+	builder := &YouTubeBuilder{client: service, key: apiKey("test-api-key")}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create a mock HTTP client
-			mockTransport := &MockTransport{
-				responses: make(map[string]*http.Response),
-			}
-
-			// Set up the mock response based on expected API call
-			mockTransport.responses["https://youtube.googleapis.com/youtube/v3/search"] = &http.Response{
-				StatusCode: 200,
-				Body:       http.NoBody, // Simplified for this test
-			}
-
-			client := &http.Client{Transport: mockTransport}
-
-			// Create YouTube service with mock client
-			yt, err := youtube.NewService(context.Background(), option.WithHTTPClient(client))
-			require.NoError(t, err)
-
-			_ = &YouTubeBuilder{
-				client: yt,
-				key:    apiKey("test-api-key"),
-			}
-
-			// Note: This test demonstrates the structure but won't actually work
-			// without proper mocking of the YouTube API responses.
-			// For a real implementation, you'd need more sophisticated mocking
-			// like using httptest.Server or a proper mock library.
-
-			// Skip the actual API call test since it requires complex mocking
-			t.Skip("Skipping API call test - requires more sophisticated mocking")
-		})
-	}
+	channel, err := builder.listChannels(context.Background(), model.TypeHandle, "MidnightASMR1", "id")
+	require.NoError(t, err)
+	require.Equal(t, "UCGvEFYE8RlYcz1XD26b_4Wg", channel.Id)
+	require.NotNil(t, transport.request)
+	require.Equal(t, "/youtube/v3/channels", transport.request.URL.Path)
+	require.Equal(t, "MidnightASMR1", transport.request.URL.Query().Get("forHandle"))
+	require.Empty(t, transport.request.URL.Query().Get("q"))
 }
 
 func TestParseURLWithHandles(t *testing.T) {
